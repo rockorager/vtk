@@ -9,16 +9,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const acktui_mod = b.addModule("acktui", .{
+    const vtk_mod = b.addModule("vtk", .{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    acktui_mod.addImport("vaxis", vaxis_dep.module("vaxis"));
+    vtk_mod.addImport("vaxis", vaxis_dep.module("vaxis"));
 
     const Example = enum {
+        button,
         counter,
+        text_input,
     };
     const example_option = b.option(Example, "example", "Example to run (default: text_input)") orelse .counter;
     const example_step = b.step("example", "Run example");
@@ -31,7 +33,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    example.root_module.addImport("acktui", acktui_mod);
+    example.root_module.addImport("vtk", vtk_mod);
 
     const example_run = b.addRunArtifact(example);
     example_step.dependOn(&example_run.step);

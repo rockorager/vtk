@@ -1,5 +1,5 @@
 .{
-    .name = "acktui",
+    .name = "vtk",
     .version = "0.0.0",
     .dependencies = .{
         .vaxis = .{

@@ -2,36 +2,36 @@ const std = @import("std");
 const vtk = @import("vtk");
 const vaxis = vtk.vaxis;
 
-const Counter = struct {
-    count: u8 = 0,
+const App = struct {
+    text_input: vtk.TextInput,
 
-    pub fn widget(self: *Counter) vtk.Widget {
+    pub fn widget(self: *App) vtk.Widget {
         return .{
             .userdata = self,
-            .updateFn = Counter.update,
-            .drawFn = Counter.draw,
+            .updateFn = App.update,
+            .drawFn = App.draw,
         };
     }
 
     pub fn update(ptr: *anyopaque, ctx: *vtk.Context, event: vtk.Event) anyerror!void {
-        const self: *Counter = @ptrCast(@alignCast(ptr));
+        const self: *App = @ptrCast(@alignCast(ptr));
         switch (event) {
             .key_press => |key| {
-                self.count +%= 1;
-                if (key.matches('c', .{ .ctrl = true }))
+                if (key.matches('c', .{ .ctrl = true })) {
                     ctx.quit();
+                    self.text_input.deinit();
+                }
             },
             else => {},
         }
+        try self.text_input.update(ctx, event);
     }
 
     pub fn draw(ptr: *anyopaque, arena: std.mem.Allocator, win: vaxis.Window) anyerror!void {
-        const self: *Counter = @ptrCast(@alignCast(ptr));
-        const msg = try std.fmt.allocPrint(arena, "{d}", .{self.count});
-        _ = try win.printSegment(.{ .text = msg }, .{});
+        const self: *App = @ptrCast(@alignCast(ptr));
+        return self.text_input.draw(arena, win);
     }
 };
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
@@ -41,7 +41,9 @@ pub fn main() !void {
         }
     }
     const allocator = gpa.allocator();
-    var counter: Counter = .{};
 
-    try vtk.run(allocator, counter.widget(), .{});
+    const input = vtk.TextInput.init(allocator);
+    var app: App = .{ .text_input = input };
+
+    try vtk.run(allocator, app.widget(), .{});
 }

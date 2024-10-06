@@ -1,6 +1,9 @@
 const std = @import("std");
 pub const vaxis = @import("vaxis");
 
+pub const Button = @import("Button.zig");
+pub const TextInput = @import("TextInput.zig");
+
 pub const AppEvent = struct {
     kind: u16,
     event: *const anyopaque,
@@ -19,6 +22,7 @@ pub const Event = union(enum) {
     color_scheme: vaxis.Color.Scheme, // light / dark OS theme changes
     winsize: vaxis.Winsize, // the window size has changed. This event is always sent when the loop is started
     app: AppEvent, // A custom event from the app
+    redraw, // A generic redraw event
 };
 
 pub const EventLoop = vaxis.Loop(Event);
@@ -31,6 +35,11 @@ pub const Context = struct {
     // Tell the application to quit. Thread safe.
     pub fn quit(self: *Context) void {
         self.should_quit.store(true, .unordered);
+    }
+
+    // Trigger a redraw event. Thread safe.
+    pub fn redraw(self: *Context) void {
+        _ = self.loop.tryPostEvent(.redraw);
     }
 };
 
@@ -64,6 +73,9 @@ pub fn run(allocator: std.mem.Allocator, widget: Widget, opts: RunOptions) anyer
 
     try vx.enterAltScreen(tty.anyWriter());
     try vx.queryTerminal(tty.anyWriter(), 1 * std.time.ns_per_s);
+    // HACK: Ghostty is reporting incorrect pixel screen size
+    vx.caps.sgr_pixels = false;
+    try vx.setMouseMode(tty.anyWriter(), true);
 
     // Calculate tick rate
     const tick: u64 = @divFloor(std.time.ns_per_s, @as(u64, opts.framerate));
@@ -82,20 +94,7 @@ pub fn run(allocator: std.mem.Allocator, widget: Widget, opts: RunOptions) anyer
         .should_quit = &should_quit,
     };
 
-    while (!should_quit.load(.unordered)) {
-        // We handle drawing first to ensure a `quit` happens before a draw
-        if (has_event) {
-            defer _ = arena.reset(.retain_capacity);
-            has_event = false;
-            const win = vx.window();
-            win.clear();
-            vx.setMouseShape(.default);
-            try widget.drawFn(widget.userdata, arena_alloc, win);
-
-            try vx.render(buffered.writer().any());
-            try buffered.flush();
-        }
-
+    while (true) {
         std.time.sleep(tick);
 
         while (loop.tryEvent()) |event| {
@@ -108,6 +107,21 @@ pub fn run(allocator: std.mem.Allocator, widget: Widget, opts: RunOptions) anyer
             }
             has_event = true;
             try widget.updateFn(widget.userdata, &ctx, event);
+        }
+
+        if (should_quit.load(.unordered))
+            return;
+
+        if (has_event) {
+            defer _ = arena.reset(.retain_capacity);
+            has_event = false;
+            const win = vx.window();
+            win.clear();
+            vx.setMouseShape(.default);
+            try widget.drawFn(widget.userdata, arena_alloc, win);
+
+            try vx.render(buffered.writer().any());
+            try buffered.flush();
         }
     }
 }
