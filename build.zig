@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) void {
     const Example = enum {
         button,
         counter,
+        spinner,
         text_input,
     };
     const example_option = b.option(Example, "example", "Example to run (default: text_input)") orelse .counter;
@@ -39,10 +40,11 @@ pub fn build(b: *std.Build) void {
     example_step.dependOn(&example_run.step);
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("src/test.zig"),
         .target = target,
         .optimize = optimize,
     });
+    exe_unit_tests.root_module.addImport("vaxis", vaxis_dep.module("vaxis"));
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 

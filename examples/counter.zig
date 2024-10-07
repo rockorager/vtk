@@ -13,7 +13,7 @@ const Counter = struct {
         };
     }
 
-    pub fn update(ptr: *anyopaque, ctx: *vtk.Context, event: vtk.Event) anyerror!void {
+    pub fn update(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
         const self: *Counter = @ptrCast(@alignCast(ptr));
         switch (event) {
             .key_press => |key| {
@@ -25,10 +25,11 @@ const Counter = struct {
         }
     }
 
-    pub fn draw(ptr: *anyopaque, arena: std.mem.Allocator, win: vaxis.Window) anyerror!void {
+    pub fn draw(ptr: *anyopaque, ctx: vtk.DrawContext, win: vaxis.Window) anyerror!vtk.Size {
         const self: *Counter = @ptrCast(@alignCast(ptr));
-        const msg = try std.fmt.allocPrint(arena, "{d}", .{self.count});
-        _ = try win.printSegment(.{ .text = msg }, .{});
+        const msg = try std.fmt.allocPrint(ctx.arena, "{d}", .{self.count});
+        const result = try win.printSegment(.{ .text = msg }, .{});
+        return .{ .width = result.col, .height = result.row };
     }
 };
 

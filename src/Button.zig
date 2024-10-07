@@ -35,25 +35,25 @@ pub fn widget(self: *Button) vtk.Widget {
     };
 }
 
-pub fn updateErased(ptr: *anyopaque, ctx: *vtk.Context, event: vtk.Event) anyerror!void {
+pub fn updateErased(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
     const self: *Button = @ptrCast(@alignCast(ptr));
     return self.update(ctx, event);
 }
 
-pub fn update(self: *Button, _: *vtk.Context, event: vtk.Event) anyerror!void {
+pub fn update(self: *Button, _: vtk.Context, event: vtk.Event) anyerror!void {
     switch (event) {
         .mouse => |mouse| self.mouse = mouse,
         else => {},
     }
 }
 
-pub fn drawErased(ptr: *anyopaque, arena: std.mem.Allocator, win: vaxis.Window) anyerror!void {
+pub fn drawErased(ptr: *anyopaque, ctx: vtk.DrawContext, win: vaxis.Window) anyerror!vtk.Size {
     const self: *Button = @ptrCast(@alignCast(ptr));
-    return self.draw(arena, win);
+    return self.draw(ctx, win);
 }
 
-pub fn draw(self: *Button, _: std.mem.Allocator, win: vaxis.Window) anyerror!void {
-    // Always ensure we have unicode
+pub fn draw(self: *Button, _: vtk.DrawContext, win: vaxis.Window) anyerror!vtk.Size {
+    // TODO: layout / sizing integration
     const line_count = std.mem.count(u8, self.label, "\n") + 1;
     const style = if (win.hasMouse(self.mouse)) |mouse| blk: {
         win.screen.mouse_shape = .pointer;
@@ -93,4 +93,5 @@ pub fn draw(self: *Button, _: std.mem.Allocator, win: vaxis.Window) anyerror!voi
         );
         row += 1;
     }
+    return .{};
 }

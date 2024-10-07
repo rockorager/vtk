@@ -2,6 +2,7 @@ const std = @import("std");
 pub const vaxis = @import("vaxis");
 
 pub const Button = @import("Button.zig");
+pub const Spinner = @import("Spinner.zig");
 pub const TextInput = @import("TextInput.zig");
 
 pub const AppEvent = struct {
@@ -31,23 +32,62 @@ pub const EventLoop = vaxis.Loop(Event);
 pub const Context = struct {
     loop: *EventLoop,
     should_quit: *std.atomic.Value(bool),
+    scheduled_events: *std.ArrayList(i64),
 
     // Tell the application to quit. Thread safe.
-    pub fn quit(self: *Context) void {
+    pub fn quit(self: Context) void {
         self.should_quit.store(true, .unordered);
     }
 
     // Trigger a redraw event. Thread safe.
-    pub fn redraw(self: *Context) void {
+    pub fn redraw(self: Context) void {
         _ = self.loop.tryPostEvent(.redraw);
+    }
+
+    // Triggers a redraw event to be inserted into the queue on the next tick after timestamp_ms
+    pub fn updateAt(self: Context, timestamp_ms: i64) std.mem.Allocator.Error!void {
+        try self.scheduled_events.append(timestamp_ms);
+        std.sort.insertion(i64, self.scheduled_events.items, {}, std.sort.desc(i64));
+    }
+};
+
+pub const DrawContext = struct {
+    arena: std.mem.Allocator,
+    min: Size,
+
+    pub fn withMinSize(self: DrawContext, min: Size) DrawContext {
+        var new = self;
+        new.min = min;
+        return new;
+    }
+};
+
+pub const Size = struct {
+    width: usize = 0,
+    height: usize = 0,
+
+    // Resolves the size, preferring an odd number. Assumes, but does not assert, that wants is an odd
+    // number. This means the result is only adjusted if it isn't the max or the min
+    pub fn preferOdd(min: usize, max: usize, wants: usize) usize {
+        const tgt = resolveConstraint(min, max, wants);
+        // Already odd
+        if (tgt % 2 != 0) return tgt;
+
+        // At max, have room to shrink
+        if (tgt == max and tgt > min) return tgt - 1;
+
+        // At min, have room to grow
+        if (tgt == min and tgt < max) return tgt + 1;
+
+        return tgt;
     }
 };
 
 /// The Widget interface
 pub const Widget = struct {
     userdata: *anyopaque,
-    updateFn: *const fn (userdata: *anyopaque, ctx: *Context, event: Event) anyerror!void,
-    drawFn: *const fn (userdata: *anyopaque, arena: std.mem.Allocator, win: vaxis.Window) anyerror!void,
+    updateFn: *const fn (userdata: *anyopaque, ctx: Context, event: Event) anyerror!void,
+    drawFn: *const fn (userdata: *anyopaque, ctx: DrawContext, win: vaxis.Window) anyerror!Size,
 };
 
 pub const RunOptions = struct {
@@ -83,19 +123,40 @@ pub fn run(allocator: std.mem.Allocator, widget: Widget, opts: RunOptions) anyer
     // Set up arena and context
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const arena_alloc = arena.allocator();
 
     var buffered = tty.bufferedWriter();
-    var has_event = false;
+    var should_draw = false;
     var should_quit = std.atomic.Value(bool).init(false);
+    var scheduled_events = std.ArrayList(i64).init(allocator);
+    defer scheduled_events.deinit();
 
-    var ctx: Context = .{
+    const ctx: Context = .{
         .loop = &loop,
         .should_quit = &should_quit,
+        .scheduled_events = &scheduled_events,
+    };
+
+    const draw_ctx: DrawContext = .{
+        .arena = arena.allocator(),
+        .min = .{ .width = 0, .height = 0 },
     };
 
     while (true) {
         std.time.sleep(tick);
+
+        const now = std.time.milliTimestamp();
+        // scheduled_events are always sorted descending
+        var iter = std.mem.reverseIterator(scheduled_events.items);
+        var did_schedule = false;
+        while (iter.next()) |ts| {
+            if (now < ts)
+                break;
+            if (!did_schedule) {
+                did_schedule = true;
+                _ = loop.tryPostEvent(.redraw);
+            }
+            _ = scheduled_events.pop();
+        }
 
         while (loop.tryEvent()) |event| {
             switch (event) {
@@ -105,23 +166,46 @@ pub fn run(allocator: std.mem.Allocator, widget: Widget, opts: RunOptions) anyer
                 },
                 else => {},
             }
-            has_event = true;
-            try widget.updateFn(widget.userdata, &ctx, event);
+            should_draw = true;
+            try widget.updateFn(widget.userdata, ctx, event);
         }
 
         if (should_quit.load(.unordered))
             return;
 
-        if (has_event) {
+        if (should_draw) {
             defer _ = arena.reset(.retain_capacity);
-            has_event = false;
+            should_draw = false;
             const win = vx.window();
             win.clear();
             vx.setMouseShape(.default);
-            try widget.drawFn(widget.userdata, arena_alloc, win);
+            _ = try widget.drawFn(widget.userdata, draw_ctx, win);
 
             try vx.render(buffered.writer().any());
             try buffered.flush();
         }
     }
+}
+
+pub fn resolveConstraint(min: usize, max: usize, wants: usize) usize {
+    std.debug.assert(min <= max);
+    // 4 cases:
+    // 1. no min, no pref => max
+    // 2. max < wants => max
+    // 3. min > wants => min
+    // 4. wants
+    if (wants == 0 and min == 0)
+        return max
+    else if (max < wants)
+        return max
+    else if (min > wants)
+        return min
+    else {
+        std.debug.assert(wants >= min and wants <= max);
+        return wants;
+    }
+}
+
+test resolveConstraint {
+    try std.testing.expectEqual(3, resolveConstraint(0, 10, 3));
 }

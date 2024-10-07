@@ -14,7 +14,7 @@ const App = struct {
         };
     }
 
-    pub fn update(ptr: *anyopaque, ctx: *vtk.Context, event: vtk.Event) anyerror!void {
+    pub fn update(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
         const self: *App = @ptrCast(@alignCast(ptr));
         switch (event) {
             .key_press => |key| {
@@ -27,7 +27,7 @@ const App = struct {
         try self.button.update(ctx, event);
     }
 
-    pub fn draw(ptr: *anyopaque, arena: std.mem.Allocator, win: vaxis.Window) anyerror!void {
+    pub fn draw(ptr: *anyopaque, ctx: vtk.DrawContext, win: vaxis.Window) anyerror!vtk.Size {
         const self: *App = @ptrCast(@alignCast(ptr));
         const child = win.child(.{
             .x_off = 2,
@@ -35,17 +35,18 @@ const App = struct {
             .width = .{ .limit = 20 },
             .height = .{ .limit = 3 },
         });
-        try self.button.draw(arena, child);
+        _ = try self.button.draw(ctx, child);
 
         const center = win.child(.{
             .x_off = 2,
             .y_off = 8,
         });
         const msg = switch (self.clicks) {
-            1 => try std.fmt.allocPrint(arena, "Button has been clicked {d} times", .{self.clicks}),
-            else => try std.fmt.allocPrint(arena, "Button has been clicked {d} times", .{self.clicks}),
+            1 => try std.fmt.allocPrint(ctx.arena, "Button has been clicked {d} times", .{self.clicks}),
+            else => try std.fmt.allocPrint(ctx.arena, "Button has been clicked {d} times", .{self.clicks}),
         };
         _ = try center.printSegment(.{ .text = msg }, .{});
+        return .{};
     }
 
     pub fn on_click(userdata: ?*anyopaque) void {

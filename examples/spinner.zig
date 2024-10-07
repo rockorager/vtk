@@ -3,7 +3,7 @@ const vtk = @import("vtk");
 const vaxis = vtk.vaxis;
 
 const App = struct {
-    text_input: vtk.TextInput,
+    spinner: vtk.Spinner,
 
     pub fn widget(self: *App) vtk.Widget {
         return .{
@@ -19,17 +19,16 @@ const App = struct {
             .key_press => |key| {
                 if (key.matches('c', .{ .ctrl = true })) {
                     ctx.quit();
-                    self.text_input.deinit();
                 }
             },
             else => {},
         }
-        try self.text_input.update(ctx, event);
+        try self.spinner.update(ctx, event);
     }
 
     pub fn draw(ptr: *anyopaque, ctx: vtk.DrawContext, win: vaxis.Window) anyerror!vtk.Size {
         const self: *App = @ptrCast(@alignCast(ptr));
-        return self.text_input.draw(ctx.withMinSize(.{ .width = 10 }), win);
+        return self.spinner.draw(ctx, win);
     }
 };
 
@@ -43,11 +42,8 @@ pub fn main() !void {
     }
     const allocator = gpa.allocator();
 
-    var input = vtk.TextInput.init(allocator);
-    input.style = .{ .bg = vaxis.Color.rgbFromUint(0x555555) };
-    input.width = 40;
-    input.hint = "Enter some text";
-    var app: App = .{ .text_input = input };
+    var app: App = .{ .spinner = .{} };
+    app.spinner.start();
 
     try vtk.run(allocator, app.widget(), .{});
 }
