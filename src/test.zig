@@ -1,7 +1,8 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
+const vtk = @import("main.zig");
 
-pub fn createWindow(allocator: std.mem.Allocator, w: usize, h: usize) !vaxis.Window {
+pub fn createCanvas(allocator: std.mem.Allocator, w: u16, h: u16) !vtk.Canvas {
     const unicode = try allocator.create(vaxis.Unicode);
     unicode.* = try vaxis.Unicode.init(allocator);
 
@@ -15,22 +16,24 @@ pub fn createWindow(allocator: std.mem.Allocator, w: usize, h: usize) !vaxis.Win
     screen.* = try vaxis.Screen.init(allocator, winsize, unicode);
 
     return .{
+        .arena = allocator,
         .x_off = 0,
         .y_off = 0,
-        .width = screen.width,
-        .height = screen.height,
+        .min = .{ .width = 0, .height = 0 },
+        .max = .{ .width = w, .height = h },
         .screen = screen,
     };
 }
 
-pub fn destroyWindow(allocator: std.mem.Allocator, window: vaxis.Window) void {
-    window.screen.unicode.deinit();
-    allocator.destroy(window.screen.unicode);
-    window.screen.deinit(allocator);
-    allocator.destroy(window.screen);
+pub fn destroyCanvas(allocator: std.mem.Allocator, canvas: vtk.Canvas) void {
+    canvas.screen.unicode.deinit();
+    allocator.destroy(canvas.screen.unicode);
+    canvas.screen.deinit(allocator);
+    allocator.destroy(canvas.screen);
 }
 
 test {
     _ = @import("main.zig");
-    _ = @import("TextInput.zig");
+
+    _ = @import("Text.zig");
 }

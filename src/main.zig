@@ -239,7 +239,7 @@ pub const Canvas = struct {
         self.screen.writeCell(col + self.x_off, row + self.y_off, cell);
     }
 
-    pub fn stringWidth(self: Canvas, str: []const u8) !usize {
+    pub fn stringWidth(self: Canvas, str: []const u8) usize {
         return vaxis.gwidth.gwidth(
             str,
             self.screen.width_method,
