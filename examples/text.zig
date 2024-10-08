@@ -1,6 +1,5 @@
 const std = @import("std");
 const vtk = @import("vtk");
-const vaxis = vtk.vaxis;
 
 const lorem_ipsum =
     \\Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce finibus odio eu tellus dignissim finibus. Nullam tristique erat elit, commodo faucibus turpis consequat et. Ut vitae elit ex. Cras aliquam ante at nisi dapibus, placerat eleifend ligula interdum. Proin auctor tempus magna, sed luctus lorem scelerisque ac. Cras id diam leo. Curabitur ultrices tempus massa quis porta. Aenean in augue quis sapien mollis ullamcorper quis et dui. Vivamus ornare velit ut magna semper tincidunt. Nam id leo ipsum. Fusce non maximus lectus. Etiam tempus quam ut molestie eleifend.
@@ -22,9 +21,12 @@ pub fn main() !void {
 
     var app: vtk.App = .{
         .root = (vtk.Center{
-            .child = (vtk.Text{
-                .text = lorem_ipsum,
-                .text_align = .left,
+            .child = (vtk.Padding{
+                .child = (vtk.Text{
+                    .text = lorem_ipsum,
+                    .text_align = .center,
+                }).widget(),
+                .padding = vtk.Padding.horizontal(24),
             }).widget(),
         }).widget(),
     };

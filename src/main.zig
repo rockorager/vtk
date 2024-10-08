@@ -3,6 +3,7 @@ pub const vaxis = @import("vaxis");
 
 pub const App = @import("App.zig");
 pub const Center = @import("Center.zig");
+pub const Padding = @import("Padding.zig");
 pub const Text = @import("Text.zig");
 
 pub const AppEvent = struct {
