@@ -142,6 +142,11 @@ pub const Canvas = struct {
         );
     }
 
+    /// Clears the *entire* screen
+    pub fn clear(self: Canvas) void {
+        @memset(self.screen.buf, .{ .default = true });
+    }
+
     /// Creates a temporary Canvas with size max, used to layout a child widget.
     pub fn layoutCanvas(self: Canvas, min: Size, max: Size) !Canvas {
         const screen = try self.arena.create(vaxis.Screen);
@@ -183,6 +188,7 @@ pub const Canvas = struct {
             for (0..region.width) |col| {
                 var cell = self.screen.readCell(col, row) orelse continue;
                 cell.style = style;
+                cell.default = false;
                 self.screen.writeCell(col, row, cell);
             }
         }
