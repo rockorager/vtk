@@ -16,7 +16,6 @@ pub fn main() !void {
         .root = (vtk.Center{
             .child = (vtk.Text{
                 .text = "Hello, \nworld",
-                .style = .{ .bg = .{ .index = 3 } },
             }).widget(),
         }).widget(),
     };
