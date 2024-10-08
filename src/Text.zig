@@ -10,6 +10,7 @@ style: vaxis.Style = .{},
 text_align: enum { left, center, right } = .left,
 softwrap: bool = true,
 overflow: enum { ellipsis, clip } = .ellipsis,
+width_basis: enum { parent, longest_line } = .longest_line,
 
 pub fn widget(self: *const Text) vtk.Widget {
     return .{
@@ -38,42 +39,21 @@ pub fn drawErased(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
 
 pub fn draw(self: *const Text, canvas: vtk.Canvas) anyerror!vtk.Size {
     var max_width: u16 = 0;
-    var line_iter: LineIterator = .{ .buf = self.text };
     var row: u16 = 0;
-    while (line_iter.next()) |line| {
-        const line_width = canvas.stringWidth(line);
-        const needs_wrap = line_width > canvas.max.width;
-        max_width = @max(max_width, @min(line_width, canvas.max.width));
-        var col: u16 = switch (self.text_align) {
-            .left => 0,
-            .center => if (needs_wrap) 0 else @intCast((canvas.max.width - line_width) / 2),
-            .right => if (needs_wrap) 0 else @intCast(canvas.max.width - line_width),
-        };
-        var word_iter = std.mem.splitScalar(u8, line, ' ');
-        var softwrapped: bool = false;
-        defer row += 1;
-        while (word_iter.next()) |word| {
-            if (self.softwrap and needs_wrap) {
-                const word_width = canvas.stringWidth(word);
-                if (word_width <= canvas.max.width and
-                    word_width > canvas.max.width - col)
-                {
-                    max_width = @max(col, max_width);
-                    row += 1;
-                    col = 0;
-                    softwrapped = true;
-                }
-            }
-            if (col == 0 and word.len > 0) {
-                // Don't write a space
-            } else {
-                // write a space
-                canvas.writeCell(col, row, .{ .style = self.style });
-                col += 1;
-            }
-            var char_iter = canvas.screen.unicode.graphemeIterator(word);
+    if (self.softwrap) {
+        var iter = SoftwrapIterator.init(self.text, canvas);
+        while (iter.next()) |line| {
+            if (row >= canvas.max.height) break;
+            defer row += 1;
+            max_width = @max(max_width, line.width);
+            var col: u16 = switch (self.text_align) {
+                .left => 0,
+                .center => (canvas.max.width - line.width) / 2,
+                .right => canvas.max.width - line.width,
+            };
+            var char_iter = canvas.screen.unicode.graphemeIterator(line.bytes);
             while (char_iter.next()) |char| {
-                const grapheme = char.bytes(word);
+                const grapheme = char.bytes(line.bytes);
                 const grapheme_width = canvas.stringWidth(grapheme);
                 canvas.writeCell(col, row, .{
                     .char = .{ .grapheme = grapheme, .width = grapheme_width },
@@ -82,7 +62,45 @@ pub fn draw(self: *const Text, canvas: vtk.Canvas) anyerror!vtk.Size {
                 col += @intCast(grapheme_width);
             }
         }
+    } else {
+        var line_iter: LineIterator = .{ .buf = self.text };
+        while (line_iter.next()) |line| {
+            if (row >= canvas.max.height) break;
+            const line_width = canvas.stringWidth(line);
+            defer row += 1;
+            const resolved_line_width = @min(canvas.max.width, line_width);
+            max_width = @max(max_width, resolved_line_width);
+            var col: u16 = switch (self.text_align) {
+                .left => 0,
+                .center => (canvas.max.width - resolved_line_width) / 2,
+                .right => canvas.max.width - resolved_line_width,
+            };
+            var char_iter = canvas.screen.unicode.graphemeIterator(line);
+            while (char_iter.next()) |char| {
+                if (col >= canvas.max.width) break;
+                const grapheme = char.bytes(line);
+                const grapheme_width = canvas.stringWidth(grapheme);
+
+                if (col + grapheme_width >= canvas.max.width and
+                    line_width > canvas.max.width and
+                    self.overflow == .ellipsis)
+                {
+                    canvas.writeCell(col, row, .{
+                        .char = .{ .grapheme = "…", .width = 1 },
+                        .style = self.style,
+                    });
+                    col = canvas.max.width;
+                } else {
+                    canvas.writeCell(col, row, .{
+                        .char = .{ .grapheme = grapheme, .width = grapheme_width },
+                        .style = self.style,
+                    });
+                    col += @intCast(grapheme_width);
+                }
+            }
+        }
     }
+    if (self.width_basis == .parent) max_width = canvas.max.width;
     const region: vtk.Size = .{ .width = max_width, .height = row };
     canvas.fillStyle(self.style, region);
     return region;
