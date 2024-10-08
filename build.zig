@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
     vtk_mod.addImport("vaxis", vaxis_dep.module("vaxis"));
 
     const Example = enum {
+        flexrow,
         text,
     };
     const example_option = b.option(Example, "example", "Example to run (default: text_input)") orelse .text;

@@ -3,6 +3,7 @@ pub const vaxis = @import("vaxis");
 
 pub const App = @import("App.zig");
 pub const Center = @import("Center.zig");
+pub const FlexRow = @import("FlexRow.zig");
 pub const Padding = @import("Padding.zig");
 pub const Text = @import("Text.zig");
 
