@@ -1,8 +1,11 @@
 const std = @import("std");
 pub const vaxis = @import("vaxis");
 
+pub const App = @import("App.zig");
 pub const Button = @import("Button.zig");
+pub const Center = @import("Center.zig");
 pub const Spinner = @import("Spinner.zig");
+pub const Text = @import("Text.zig");
 pub const TextInput = @import("TextInput.zig");
 
 pub const AppEvent = struct {
@@ -24,6 +27,8 @@ pub const Event = union(enum) {
     winsize: vaxis.Winsize, // the window size has changed. This event is always sent when the loop is started
     app: AppEvent, // A custom event from the app
     redraw, // A generic redraw event
+    quit, // The application will exit when the event loop is drained
+    abort_quit, // Abort a quit event. This must be sent in response to a quit event to work
 };
 
 pub const EventLoop = vaxis.Loop(Event);
@@ -63,12 +68,12 @@ pub const DrawContext = struct {
 };
 
 pub const Size = struct {
-    width: usize = 0,
-    height: usize = 0,
+    width: u16 = 0,
+    height: u16 = 0,
 
     // Resolves the size, preferring an odd number. Assumes, but does not assert, that wants is an odd
     // number. This means the result is only adjusted if it isn't the max or the min
-    pub fn preferOdd(min: usize, max: usize, wants: usize) usize {
+    pub fn preferOdd(min: u16, max: u16, wants: u16) u16 {
         const tgt = resolveConstraint(min, max, wants);
         // Already odd
         if (tgt % 2 != 0) return tgt;
@@ -86,8 +91,8 @@ pub const Size = struct {
 /// The Widget interface
 pub const Widget = struct {
     userdata: *anyopaque,
-    updateFn: *const fn (userdata: *anyopaque, ctx: Context, event: Event) anyerror!void,
-    drawFn: *const fn (userdata: *anyopaque, ctx: DrawContext, win: vaxis.Window) anyerror!Size,
+    eventHandler: *const fn (userdata: *anyopaque, ctx: Context, event: Event) anyerror!void,
+    drawFn: *const fn (userdata: *anyopaque, canvas: Canvas) anyerror!Size,
 };
 
 pub const RunOptions = struct {
@@ -136,11 +141,6 @@ pub fn run(allocator: std.mem.Allocator, widget: Widget, opts: RunOptions) anyer
         .scheduled_events = &scheduled_events,
     };
 
-    const draw_ctx: DrawContext = .{
-        .arena = arena.allocator(),
-        .min = .{ .width = 0, .height = 0 },
-    };
-
     while (true) {
         std.time.sleep(tick);
 
@@ -167,19 +167,30 @@ pub fn run(allocator: std.mem.Allocator, widget: Widget, opts: RunOptions) anyer
                 else => {},
             }
             should_draw = true;
-            try widget.updateFn(widget.userdata, ctx, event);
+            try widget.eventHandler(widget.userdata, ctx, event);
         }
 
         if (should_quit.load(.unordered))
             return;
 
         if (should_draw) {
+            const canvas: Canvas = .{
+                .arena = arena.allocator(),
+                .screen = &vx.screen,
+                .x_off = 0,
+                .y_off = 0,
+                .min = .{ .width = 0, .height = 0 },
+                .max = .{
+                    .width = @intCast(vx.screen.width),
+                    .height = @intCast(vx.screen.height),
+                },
+            };
             defer _ = arena.reset(.retain_capacity);
             should_draw = false;
             const win = vx.window();
             win.clear();
             vx.setMouseShape(.default);
-            _ = try widget.drawFn(widget.userdata, draw_ctx, win);
+            _ = try widget.drawFn(widget.userdata, canvas);
 
             try vx.render(buffered.writer().any());
             try buffered.flush();
@@ -187,7 +198,7 @@ pub fn run(allocator: std.mem.Allocator, widget: Widget, opts: RunOptions) anyer
     }
 }
 
-pub fn resolveConstraint(min: usize, max: usize, wants: usize) usize {
+pub fn resolveConstraint(min: u16, max: u16, wants: u16) u16 {
     std.debug.assert(min <= max);
     // 4 cases:
     // 1. no min, no pref => max
@@ -209,3 +220,76 @@ pub fn resolveConstraint(min: usize, max: usize, wants: usize) usize {
 test resolveConstraint {
     try std.testing.expectEqual(3, resolveConstraint(0, 10, 3));
 }
+
+pub const Canvas = struct {
+    arena: std.mem.Allocator,
+    screen: *vaxis.Screen,
+
+    // offset from origin of screen
+    x_off: u16,
+    y_off: u16,
+
+    // constraints
+    min: Size,
+    max: Size,
+
+    pub fn writeCell(self: Canvas, col: u16, row: u16, cell: vaxis.Cell) void {
+        if (self.max.height == 0 or self.max.width == 0) return;
+        if (self.max.height <= row or self.max.width <= col) return;
+        self.screen.writeCell(col + self.x_off, row + self.y_off, cell);
+    }
+
+    pub fn stringWidth(self: Canvas, str: []const u8) !usize {
+        return vaxis.gwidth.gwidth(
+            str,
+            self.screen.width_method,
+            &self.screen.unicode.width_data,
+        );
+    }
+
+    /// Creates a temporary Canvas with size max, used to layout a child widget.
+    pub fn layoutCanvas(self: Canvas, min: Size, max: Size) !Canvas {
+        const screen = try self.arena.create(vaxis.Screen);
+        screen.* = try vaxis.Screen.init(
+            self.arena,
+            .{ .rows = max.height, .cols = max.width, .x_pixel = 0, .y_pixel = 0 },
+            self.screen.unicode,
+        );
+        screen.width_method = self.screen.width_method;
+        return .{
+            .arena = self.arena,
+            .screen = screen,
+            .x_off = 0,
+            .y_off = 0,
+            .min = min,
+            .max = max,
+        };
+    }
+
+    /// Copy the contents from src to dst
+    pub fn copyRegion(
+        dst: Canvas,
+        dst_x: u16,
+        dst_y: u16,
+        src: Canvas,
+        region: Size,
+    ) void {
+        for (0..region.height) |row| {
+            const src_start = row * src.screen.width;
+            const src_end = src_start + region.width;
+            const dst_start = dst_x + ((row + dst_y) * dst.screen.width);
+            const dst_end = dst_start + region.width;
+            @memcpy(dst.screen.buf[dst_start..dst_end], src.screen.buf[src_start..src_end]);
+        }
+    }
+
+    pub fn fillStyle(self: Canvas, style: vaxis.Style, region: Size) void {
+        for (0..region.height) |row| {
+            for (0..region.width) |col| {
+                var cell = self.screen.readCell(col, row) orelse continue;
+                cell.style = style;
+                self.screen.writeCell(col, row, cell);
+            }
+        }
+    }
+};

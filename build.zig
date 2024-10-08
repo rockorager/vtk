@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
         button,
         counter,
         spinner,
+        text,
         text_input,
     };
     const example_option = b.option(Example, "example", "Example to run (default: text_input)") orelse .counter;
