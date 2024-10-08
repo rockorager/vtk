@@ -101,7 +101,10 @@ pub fn draw(self: *const Text, canvas: vtk.Canvas) anyerror!vtk.Size {
         }
     }
     if (self.width_basis == .parent) max_width = canvas.max.width;
-    const region: vtk.Size = .{ .width = max_width, .height = row };
+    const region: vtk.Size = .{
+        .width = @max(max_width, canvas.min.width),
+        .height = @max(row, canvas.min.height),
+    };
     canvas.fillStyle(self.style, region);
     return region;
 }
