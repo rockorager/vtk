@@ -34,6 +34,5 @@ pub fn destroyCanvas(allocator: std.mem.Allocator, canvas: vtk.Canvas) void {
 
 test {
     _ = @import("main.zig");
-
     _ = @import("Text.zig");
 }

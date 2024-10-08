@@ -18,13 +18,9 @@ pub fn build(b: *std.Build) void {
     vtk_mod.addImport("vaxis", vaxis_dep.module("vaxis"));
 
     const Example = enum {
-        button,
-        counter,
-        spinner,
         text,
-        text_input,
     };
-    const example_option = b.option(Example, "example", "Example to run (default: text_input)") orelse .counter;
+    const example_option = b.option(Example, "example", "Example to run (default: text_input)") orelse .text;
     const example_step = b.step("example", "Run example");
     const example = b.addExecutable(.{
         .name = "example",
