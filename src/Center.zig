@@ -21,9 +21,7 @@ pub fn handleEventErased(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) an
 }
 
 pub fn handleEvent(self: *const Center, ctx: vtk.Context, event: vtk.Event) anyerror!void {
-    _ = event; // autofix
-    _ = ctx; // autofix
-    _ = self; // autofix
+    return self.child.handleEvent(ctx, event);
 }
 
 pub fn drawErased(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
