@@ -26,18 +26,24 @@ fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
 }
 
 pub fn draw(self: *const Text, canvas: vtk.Canvas) anyerror!vtk.Size {
-    var max_width: u16 = 0;
+    var widest_line: u16 = switch (self.text_align) {
+        .left => 0,
+        .center,
+        .right,
+        => self.findWidestLine(canvas),
+    };
+
     var row: u16 = 0;
     if (self.softwrap) {
         var iter = SoftwrapIterator.init(self.text, canvas);
         while (iter.next()) |line| {
             if (row >= canvas.max.height) break;
             defer row += 1;
-            max_width = @max(max_width, line.width);
+            widest_line = @max(widest_line, line.width);
             var col: u16 = switch (self.text_align) {
                 .left => 0,
-                .center => (canvas.max.width - line.width) / 2,
-                .right => canvas.max.width - line.width,
+                .center => (widest_line - line.width) / 2,
+                .right => widest_line - line.width,
             };
             var char_iter = canvas.screen.unicode.graphemeIterator(line.bytes);
             while (char_iter.next()) |char| {
@@ -57,7 +63,7 @@ pub fn draw(self: *const Text, canvas: vtk.Canvas) anyerror!vtk.Size {
             const line_width = canvas.stringWidth(line);
             defer row += 1;
             const resolved_line_width = @min(canvas.max.width, line_width);
-            max_width = @max(max_width, resolved_line_width);
+            widest_line = @max(widest_line, resolved_line_width);
             var col: u16 = switch (self.text_align) {
                 .left => 0,
                 .center => (canvas.max.width - resolved_line_width) / 2,
@@ -88,13 +94,37 @@ pub fn draw(self: *const Text, canvas: vtk.Canvas) anyerror!vtk.Size {
             }
         }
     }
-    if (self.width_basis == .parent) max_width = canvas.max.width;
+    if (self.width_basis == .parent) widest_line = canvas.max.width;
     const region: vtk.Size = .{
-        .width = @max(max_width, canvas.min.width),
+        .width = @max(widest_line, canvas.min.width),
         .height = @max(row, canvas.min.height),
     };
     canvas.fillStyle(self.style, region);
     return region;
+}
+
+fn findWidestLine(self: *const Text, canvas: vtk.Canvas) u16 {
+    if (self.width_basis == .parent) return canvas.max.width;
+    var row: u16 = 0;
+    var max_width: u16 = 0;
+    if (self.softwrap) {
+        var iter = SoftwrapIterator.init(self.text, canvas);
+        while (iter.next()) |line| {
+            if (row >= canvas.max.height) break;
+            defer row += 1;
+            max_width = @max(max_width, line.width);
+        }
+    } else {
+        var line_iter: LineIterator = .{ .buf = self.text };
+        while (line_iter.next()) |line| {
+            if (row >= canvas.max.height) break;
+            const line_width = canvas.stringWidth(line);
+            defer row += 1;
+            const resolved_line_width = @min(canvas.max.width, line_width);
+            max_width = @max(max_width, resolved_line_width);
+        }
+    }
+    return max_width;
 }
 
 /// Iterates a slice of bytes by linebreaks. Lines are split by '\r', '\n', or '\r\n'
