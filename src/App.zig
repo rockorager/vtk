@@ -11,7 +11,6 @@ const Widget = vtk.Widget;
 
 const App = @This();
 
-framerate: u8,
 quit_key: vaxis.Key = .{ .codepoint = 'c', .mods = .{ .ctrl = true } },
 
 allocator: std.mem.Allocator,
@@ -28,13 +27,10 @@ pub const Options = struct {
 /// Create an application. We require stable pointers to do the set up, so this will create an App
 /// object on the heap. Call destroy when the app is complete to reset terminal state and release
 /// resources
-pub fn create(allocator: std.mem.Allocator, opts: Options) !*App {
-    const framerate: u8 = if (opts.framerate > 0) opts.framerate else 60;
-
+pub fn create(allocator: std.mem.Allocator) !*App {
     const app = try allocator.create(App);
 
     app.* = .{
-        .framerate = framerate,
         .allocator = allocator,
         .tty = try vaxis.Tty.init(),
         .vx = try vaxis.init(allocator, .{ .system_clipboard_allocator = allocator }),
@@ -67,8 +63,7 @@ pub fn context(self: *App) vtk.Context {
     };
 }
 
-pub fn run(self: *App, widget: vtk.Widget) anyerror!void {
-    assert(self.framerate != 0);
+pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
     // Initialize vaxis
     const vx = &self.vx;
     const tty = &self.tty;
@@ -79,8 +74,9 @@ pub fn run(self: *App, widget: vtk.Widget) anyerror!void {
     vx.caps.sgr_pixels = false;
     try vx.setMouseMode(tty.anyWriter(), true);
 
+    const framerate: u64 = if (opts.framerate > 0) opts.framerate else 60;
     // Calculate tick rate
-    const tick_ms: u64 = @divFloor(std.time.ms_per_s, @as(u64, self.framerate));
+    const tick_ms: u64 = @divFloor(std.time.ms_per_s, framerate);
 
     // Set up arena and context
     var arena = std.heap.ArenaAllocator.init(self.allocator);

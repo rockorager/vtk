@@ -19,7 +19,7 @@ pub fn main() !void {
     }
     const allocator = gpa.allocator();
 
-    const app = try vtk.App.create(allocator, .{});
+    const app = try vtk.App.create(allocator);
     defer app.destroy();
 
     var spinner: vtk.Spinner = .{};
@@ -35,5 +35,5 @@ pub fn main() !void {
         }).widget(),
     }).widget();
 
-    try app.run(root);
+    try app.run(root, .{});
 }
