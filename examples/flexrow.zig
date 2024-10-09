@@ -14,9 +14,6 @@ pub fn main() !void {
     const app = try vtk.App.create(allocator);
     defer app.destroy();
 
-    var spinner: vtk.Spinner = .{};
-    spinner.start(app.context());
-
     const root = (vtk.FlexRow{
         .children = &.{
             .{ .widget = (vtk.Text{
@@ -30,10 +27,6 @@ pub fn main() !void {
                     .text = "def\nmore text",
                     .text_align = .center,
                 }).widget(),
-            },
-
-            .{
-                .widget = spinner.widget(),
             },
 
             .{ .widget = (vtk.Text{
