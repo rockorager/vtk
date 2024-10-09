@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
     vtk_mod.addImport("vaxis", vaxis_dep.module("vaxis"));
 
     const Example = enum {
+        flexcolumn,
         flexrow,
         text,
     };
