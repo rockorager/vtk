@@ -31,7 +31,7 @@ pub fn handleEvent(self: *const Center, ctx: vtk.Context, event: vtk.Event) anye
 
 pub fn draw(self: *const Center, canvas: vtk.Canvas) anyerror!vtk.Size {
     const layout_canvas = try canvas.layoutCanvas(canvas.min, canvas.max);
-    const size = try self.child.drawFn(self.child.userdata, layout_canvas);
+    const size = try self.child.draw(layout_canvas);
 
     const x = (canvas.max.width - size.width) / 2;
     const y = (canvas.max.height - size.height) / 2;

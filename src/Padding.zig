@@ -14,12 +14,13 @@ const PadValues = struct {
 child: vtk.Widget,
 padding: PadValues = .{},
 
+/// Vertical padding will be divided by 2 to approximate equal padding
 pub fn all(padding: u16) PadValues {
     return .{
         .left = padding,
         .right = padding,
-        .top = padding,
-        .bottom = padding,
+        .top = padding / 2,
+        .bottom = padding / 2,
     };
 }
 
@@ -61,23 +62,20 @@ pub fn handleEvent(self: *const Padding, ctx: vtk.Context, event: vtk.Event) any
 
 pub fn draw(self: *const Padding, canvas: vtk.Canvas) anyerror!vtk.Size {
     const pad = self.padding;
-    const child_canvas: vtk.Canvas = .{
-        .screen = canvas.screen,
-        .arena = canvas.arena,
-        .min = .{
-            .width = canvas.min.width -| (pad.right + pad.left),
-            .height = canvas.min.height -| (pad.top + pad.bottom),
-        },
-        .max = .{
-            .width = canvas.max.width -| (pad.right + pad.left),
-            .height = canvas.max.height -| (pad.top + pad.bottom),
-        },
-        .x_off = canvas.x_off + pad.left,
-        .y_off = canvas.y_off + pad.top,
+    const inner_min: vtk.Size = .{
+        .width = canvas.min.width -| (pad.right + pad.left),
+        .height = canvas.min.height -| (pad.top + pad.bottom),
     };
-    const child_size = try self.child.drawFn(self.child.userdata, child_canvas);
+    const inner_max: vtk.Size = .{
+        .width = canvas.max.width -| (pad.right + pad.left),
+        .height = canvas.max.height -| (pad.top + pad.bottom),
+    };
+    const layout_canvas = try canvas.layoutCanvas(inner_min, inner_max);
+    const child_size = try self.child.draw(layout_canvas);
+
+    canvas.copyRegion(pad.left, pad.top, layout_canvas, child_size);
     return .{
-        .width = child_size.width + (pad.right + pad.left),
-        .height = child_size.height + (pad.top + pad.bottom),
+        .width = @min(child_size.width + (pad.right + pad.left), canvas.max.width),
+        .height = @min(child_size.height + (pad.top + pad.bottom), canvas.max.height),
     };
 }
