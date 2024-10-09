@@ -92,6 +92,14 @@ pub const Widget = struct {
     userdata: *anyopaque,
     eventHandler: *const fn (userdata: *anyopaque, ctx: Context, event: Event) anyerror!void,
     drawFn: *const fn (userdata: *anyopaque, canvas: Canvas) anyerror!Size,
+
+    pub fn handleEvent(self: Widget, ctx: Context, event: Event) anyerror!void {
+        return self.eventHandler(self.userdata, ctx, event);
+    }
+
+    pub fn draw(self: Widget, canvas: Canvas) anyerror!Size {
+        return self.drawFn(self.userdata, canvas);
+    }
 };
 
 pub fn resolveConstraint(min: u16, max: u16, wants: u16) u16 {
