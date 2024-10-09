@@ -20,6 +20,7 @@ event_loop: EventLoop,
 should_quit: std.atomic.Value(bool),
 timers: std.ArrayList(vtk.Callback),
 
+/// Runtime options
 pub const Options = struct {
     framerate: u8 = 60,
 };
@@ -116,6 +117,7 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         if (self.should_quit.load(.unordered))
             return;
 
+        defer _ = arena.reset(.retain_capacity);
         const canvas: Canvas = .{
             .arena = arena.allocator(),
             .screen = &vx.screen,
@@ -127,7 +129,6 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
                 .height = @intCast(vx.screen.height),
             },
         };
-        defer _ = arena.reset(.retain_capacity);
         const win = vx.window();
         win.clear();
         vx.setMouseShape(.default);
