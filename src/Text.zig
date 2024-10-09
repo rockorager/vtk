@@ -15,24 +15,12 @@ width_basis: enum { parent, longest_line } = .longest_line,
 pub fn widget(self: *const Text) vtk.Widget {
     return .{
         .userdata = @constCast(self),
-        .eventHandler = handleEventErased,
-        .drawFn = drawErased,
+        .eventHandler = vtk.noopEventHandler,
+        .drawFn = typeErasedDrawFn,
     };
 }
 
-pub fn handleEventErased(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
-    _ = ptr;
-    _ = ctx;
-    _ = event;
-}
-
-pub fn handleEvent(self: *const Text, ctx: vtk.Context, event: vtk.Event) anyerror!void {
-    _ = event; // autofix
-    _ = ctx; // autofix
-    _ = self; // autofix
-}
-
-pub fn drawErased(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+pub fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
     const self: *const Text = @ptrCast(@alignCast(ptr));
     return self.draw(canvas);
 }

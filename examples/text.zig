@@ -19,17 +19,21 @@ pub fn main() !void {
     }
     const allocator = gpa.allocator();
 
-    var app: vtk.App = .{
-        .root = (vtk.Center{
-            .child = (vtk.Padding{
-                .child = (vtk.Text{
-                    .text = lorem_ipsum,
-                    .text_align = .center,
-                }).widget(),
-                .padding = vtk.Padding.horizontal(24),
-            }).widget(),
-        }).widget(),
-    };
+    const app = try vtk.App.create(allocator, .{});
+    defer app.destroy();
 
-    try app.run(allocator);
+    var spinner: vtk.Spinner = .{};
+    spinner.start(app.context());
+
+    const root = (vtk.Center{
+        .child = (vtk.Padding{
+            .child = (vtk.Text{
+                .text = lorem_ipsum,
+                .text_align = .center,
+            }).widget(),
+            .padding = vtk.Padding.horizontal(24),
+        }).widget(),
+    }).widget();
+
+    try app.run(root);
 }

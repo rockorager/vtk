@@ -11,35 +11,43 @@ pub fn main() !void {
     }
     const allocator = gpa.allocator();
 
-    var app: vtk.App = .{
-        .root = (vtk.FlexRow{
-            .children = &.{
-                .{ .widget = (vtk.Text{
-                    .text = "abc\nsome other text",
-                    .text_align = .center,
-                    .style = .{ .reverse = true },
-                }).widget(), .flex = 2 },
+    const app = try vtk.App.create(allocator, .{});
+    defer app.destroy();
 
-                .{
-                    .widget = (vtk.Text{
-                        .text = "def\nmore text",
-                        .text_align = .center,
-                    }).widget(),
-                },
+    var spinner: vtk.Spinner = .{};
+    spinner.start(app.context());
 
-                .{ .widget = (vtk.Text{
-                    .text = "ghi\nHow many\nrows should we have?",
-                    .text_align = .center,
-                    .style = .{ .reverse = true },
-                }).widget(), .flex = 0 },
+    const root = (vtk.FlexRow{
+        .children = &.{
+            .{ .widget = (vtk.Text{
+                .text = "abc\nsome other text",
+                .text_align = .center,
+                .style = .{ .reverse = true },
+            }).widget(), .flex = 2 },
 
-                .{ .widget = (vtk.Text{
-                    .text = "jkl",
+            .{
+                .widget = (vtk.Text{
+                    .text = "def\nmore text",
                     .text_align = .center,
-                }).widget() },
+                }).widget(),
             },
-        }).widget(),
-    };
 
-    try app.run(allocator);
+            .{
+                .widget = spinner.widget(),
+            },
+
+            .{ .widget = (vtk.Text{
+                .text = "ghi\nHow many\nrows should we have?",
+                .text_align = .center,
+                .style = .{ .reverse = true },
+            }).widget(), .flex = 0 },
+
+            .{ .widget = (vtk.Text{
+                .text = "jkl",
+                .text_align = .center,
+            }).widget() },
+        },
+    }).widget();
+
+    try app.run(root);
 }

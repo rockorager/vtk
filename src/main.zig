@@ -6,6 +6,9 @@ pub const Center = @import("Center.zig");
 pub const FlexRow = @import("FlexRow.zig");
 pub const Padding = @import("Padding.zig");
 pub const Text = @import("Text.zig");
+pub const Spinner = @import("Spinner.zig");
+
+const log = std.log.scoped(.vtk);
 
 pub const AppEvent = struct {
     kind: u16,
@@ -32,26 +35,36 @@ pub const Event = union(enum) {
 
 pub const EventLoop = vaxis.Loop(Event);
 
-/// Application context, passed to the `update` function
+pub const Callback = struct {
+    deadline_ms: i64,
+    ptr: *anyopaque,
+    callback: *const fn (*anyopaque, ctx: Context) void,
+
+    pub fn lessThan(_: void, lhs: Callback, rhs: Callback) bool {
+        return lhs.deadline_ms > rhs.deadline_ms;
+    }
+};
+
+/// Application context, passed to the `eventHandler` function
 pub const Context = struct {
     loop: *EventLoop,
     should_quit: *std.atomic.Value(bool),
-    scheduled_events: *std.ArrayList(i64),
+    timers: *std.ArrayList(Callback),
 
     // Tell the application to quit. Thread safe.
     pub fn quit(self: Context) void {
         self.should_quit.store(true, .unordered);
     }
 
-    // Trigger a redraw event. Thread safe.
-    pub fn redraw(self: Context) void {
-        _ = self.loop.tryPostEvent(.redraw);
+    pub fn scheduleCallback(self: Context, callback: Callback) void {
+        self.timers.append(callback) catch return;
+        std.sort.insertion(Callback, self.timers.items, {}, Callback.lessThan);
     }
 
-    // Triggers a redraw event to be inserted into the queue on the next tick after timestamp_ms
-    pub fn updateAt(self: Context, timestamp_ms: i64) std.mem.Allocator.Error!void {
-        try self.scheduled_events.append(timestamp_ms);
-        std.sort.insertion(i64, self.scheduled_events.items, {}, std.sort.desc(i64));
+    pub fn postEvent(self: Context, event: Event) void {
+        // Use try post to prevent a deadlock if this is called from the main thread
+        const success = self.loop.tryPostEvent(event);
+        if (!success) log.warn("event dropped: {}", .{event});
     }
 };
 
@@ -197,3 +210,6 @@ pub const Canvas = struct {
         }
     }
 };
+
+/// A noop event handler for widgets which don't require any event handling
+pub fn noopEventHandler(_: *anyopaque, _: Context, _: Event) anyerror!void {}
