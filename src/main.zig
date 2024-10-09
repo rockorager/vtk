@@ -110,6 +110,17 @@ pub const Widget = struct {
     }
 };
 
+pub const FlexItem = struct {
+    widget: Widget,
+    /// A value of zero means the child will have it's inherent size. Any value greater than zero
+    /// and the remaining space will be proportioned to each item
+    flex: u8 = 1,
+
+    pub fn init(child: Widget, flex: u8) FlexItem {
+        return .{ .widget = child, .flex = flex };
+    }
+};
+
 pub fn resolveConstraint(min: u16, max: u16, wants: u16) u16 {
     std.debug.assert(min <= max);
     // 4 cases:
