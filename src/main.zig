@@ -2,6 +2,7 @@ const std = @import("std");
 pub const vaxis = @import("vaxis");
 
 pub const App = @import("App.zig");
+pub const Button = @import("Button.zig");
 pub const Center = @import("Center.zig");
 pub const FlexColumn = @import("FlexColumn.zig");
 pub const FlexRow = @import("FlexRow.zig");

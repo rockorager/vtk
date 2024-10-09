@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) void {
     const Example = enum {
         flexcolumn,
         flexrow,
+        playground,
         text,
     };
     const example_option = b.option(Example, "example", "Example to run (default: text_input)") orelse .text;
