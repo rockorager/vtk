@@ -9,7 +9,7 @@ pub const Text = @import("Text.zig");
 
 pub const AppEvent = struct {
     kind: u16,
-    event: *const anyopaque,
+    event: ?*const anyopaque = null,
 };
 
 pub const Event = union(enum) {
