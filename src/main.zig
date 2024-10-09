@@ -58,12 +58,6 @@ pub const Context = struct {
 pub const DrawContext = struct {
     arena: std.mem.Allocator,
     min: Size,
-
-    pub fn withMinSize(self: DrawContext, min: Size) DrawContext {
-        var new = self;
-        new.min = min;
-        return new;
-    }
 };
 
 pub const Size = struct {
