@@ -20,7 +20,7 @@ pub fn widget(self: *const Text) vtk.Widget {
     };
 }
 
-pub fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
     const self: *const Text = @ptrCast(@alignCast(ptr));
     return self.draw(canvas);
 }
