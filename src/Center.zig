@@ -10,23 +10,23 @@ child: vtk.Widget,
 pub fn widget(self: *const Center) vtk.Widget {
     return .{
         .userdata = @constCast(self),
-        .eventHandler = handleEventErased,
-        .drawFn = drawErased,
+        .eventHandler = typeErasedEventHandler,
+        .drawFn = typeErasedDrawFn,
     };
 }
 
-pub fn handleEventErased(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
     const self: *const Center = @ptrCast(@alignCast(ptr));
     return self.handleEvent(ctx, event);
 }
 
-pub fn handleEvent(self: *const Center, ctx: vtk.Context, event: vtk.Event) anyerror!void {
-    return self.child.handleEvent(ctx, event);
-}
-
-pub fn drawErased(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
     const self: *const Center = @ptrCast(@alignCast(ptr));
     return self.draw(canvas);
+}
+
+pub fn handleEvent(self: *const Center, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+    return self.child.handleEvent(ctx, event);
 }
 
 pub fn draw(self: *const Center, canvas: vtk.Canvas) anyerror!vtk.Size {
