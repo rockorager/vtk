@@ -3,6 +3,8 @@ const vaxis = @import("vaxis");
 
 const vtk = @import("main.zig");
 
+const Allocator = std.mem.Allocator;
+
 const Spinner = @This();
 
 const frames: []const []const u8 = &.{ "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
@@ -56,26 +58,28 @@ pub fn widget(self: *Spinner) vtk.Widget {
     };
 }
 
-fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const self: *Spinner = @ptrCast(@alignCast(ptr));
-    return self.draw(canvas);
+    return self.draw(ctx);
 }
 
-pub fn draw(self: *Spinner, canvas: vtk.Canvas) anyerror!vtk.Size {
+pub fn draw(self: *Spinner, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const size: vtk.Size = .{
-        .width = @max(1, canvas.min.width),
-        .height = @max(1, canvas.min.height),
+        .width = @max(1, ctx.min.width),
+        .height = @max(1, ctx.min.height),
     };
-    canvas.fillStyle(self.style, size);
 
-    if (self.count.load(.unordered) == 0) return size;
+    const surface = try vtk.Surface.init(ctx.arena, self.widget(), size);
+    @memset(surface.buffer, .{ .style = self.style });
 
-    canvas.writeCell(0, 0, .{
+    if (self.count.load(.unordered) == 0) return surface;
+
+    surface.writeCell(0, 0, .{
         .char = .{
             .grapheme = frames[self.frame],
             .width = 1,
         },
         .style = self.style,
     });
-    return size;
+    return surface;
 }
