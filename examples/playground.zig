@@ -22,9 +22,13 @@ pub fn main() !void {
     const app = try vtk.App.create(allocator);
     defer app.destroy();
 
-    const root = (vtk.Text{
-        .text = lorem_ipsum,
-        .text_align = .center,
+    const root =
+        (vtk.Padding{
+        .child = (vtk.Text{
+            .text = lorem_ipsum,
+            .text_align = .center,
+        }).widget(),
+        .padding = vtk.Padding.all(24),
     }).widget();
 
     try app.run(root, .{});

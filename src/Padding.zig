@@ -1,6 +1,8 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
 
+const Allocator = std.mem.Allocator;
+
 const vtk = @import("main.zig");
 
 const Padding = @This();
@@ -51,31 +53,40 @@ fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) a
     return self.handleEvent(ctx, event);
 }
 
-fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const self: *const Padding = @ptrCast(@alignCast(ptr));
-    return self.draw(canvas);
+    return self.draw(ctx);
 }
 
 pub fn handleEvent(self: *const Padding, ctx: vtk.Context, event: vtk.Event) anyerror!void {
     return self.child.handleEvent(ctx, event);
 }
 
-pub fn draw(self: *const Padding, canvas: vtk.Canvas) anyerror!vtk.Size {
+pub fn draw(self: *const Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const pad = self.padding;
     const inner_min: vtk.Size = .{
-        .width = canvas.min.width -| (pad.right + pad.left),
-        .height = canvas.min.height -| (pad.top + pad.bottom),
+        .width = ctx.min.width -| (pad.right + pad.left),
+        .height = ctx.min.height -| (pad.top + pad.bottom),
     };
     const inner_max: vtk.Size = .{
-        .width = canvas.max.width -| (pad.right + pad.left),
-        .height = canvas.max.height -| (pad.top + pad.bottom),
+        .width = ctx.max.width -| (pad.right + pad.left),
+        .height = ctx.max.height -| (pad.top + pad.bottom),
     };
-    const layout_canvas = try canvas.layoutCanvas(inner_min, inner_max);
-    const child_size = try self.child.draw(layout_canvas);
 
-    canvas.copyRegion(pad.left, pad.top, layout_canvas, child_size);
-    return .{
-        .width = @min(child_size.width + (pad.right + pad.left), canvas.max.width),
-        .height = @min(child_size.height + (pad.top + pad.bottom), canvas.max.height),
+    const child_surface = try self.child.draw(ctx.withContstraints(inner_min, inner_max));
+
+    const children = try ctx.arena.alloc(vtk.SubSurface, 1);
+    children[0] = .{
+        .surface = child_surface,
+        .z_index = 0,
+        .origin = .{ .row = pad.top, .col = pad.left },
     };
+
+    const size = .{
+        .width = child_surface.size.width + (pad.right + pad.left),
+        .height = child_surface.size.height + (pad.top + pad.bottom),
+    };
+
+    // Create the padding surface
+    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), size, children);
 }

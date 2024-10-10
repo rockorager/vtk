@@ -214,11 +214,28 @@ pub const Surface = struct {
 
     pub fn init(allocator: Allocator, widget: Widget, size: Size) Allocator.Error!Surface {
         const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
+        @memset(buffer, .{ .default = true });
         return .{
             .size = size,
             .widget = widget,
             .buffer = buffer,
             .children = &.{},
+        };
+    }
+
+    pub fn initWithChildren(
+        allocator: Allocator,
+        widget: Widget,
+        size: Size,
+        children: []SubSurface,
+    ) Allocator.Error!Surface {
+        const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
+        @memset(buffer, .{ .default = true });
+        return .{
+            .size = size,
+            .widget = widget,
+            .buffer = buffer,
+            .children = children,
         };
     }
 
@@ -283,87 +300,6 @@ pub const SubSurface = struct {
 
     pub fn lessThan(_: void, lhs: SubSurface, rhs: SubSurface) bool {
         return lhs.z_index < rhs.z_index;
-    }
-};
-
-pub const Canvas = struct {
-    arena: std.mem.Allocator,
-    screen: *vaxis.Screen,
-    /// This slice is the size of the screen and stores the widget responsible for drawing each cell
-    owners: []?Widget,
-
-    // offset from origin of screen
-    x_off: u16,
-    y_off: u16,
-
-    // constraints
-    min: Size,
-    max: Size,
-
-    pub fn writeCell(self: Canvas, col: u16, row: u16, cell: vaxis.Cell) void {
-        if (self.max.height == 0 or self.max.width == 0) return;
-        if (self.max.height <= row or self.max.width <= col) return;
-        self.screen.writeCell(col + self.x_off, row + self.y_off, cell);
-    }
-
-    pub fn stringWidth(self: Canvas, str: []const u8) usize {
-        return vaxis.gwidth.gwidth(
-            str,
-            self.screen.width_method,
-            &self.screen.unicode.width_data,
-        );
-    }
-
-    /// Clears the *entire* screen
-    pub fn clear(self: Canvas) void {
-        @memset(self.screen.buf, .{ .default = true });
-    }
-
-    /// Creates a temporary Canvas with size max, used to layout a child widget.
-    pub fn layoutCanvas(self: Canvas, min: Size, max: Size) !Canvas {
-        const screen = try self.arena.create(vaxis.Screen);
-        screen.* = try vaxis.Screen.init(
-            self.arena,
-            .{ .rows = max.height, .cols = max.width, .x_pixel = 0, .y_pixel = 0 },
-            self.screen.unicode,
-        );
-        screen.width_method = self.screen.width_method;
-        return .{
-            .arena = self.arena,
-            .screen = screen,
-            .x_off = 0,
-            .y_off = 0,
-            .min = min,
-            .max = max,
-        };
-    }
-
-    /// Copy the contents from src to dst
-    pub fn copyRegion(
-        dst: Canvas,
-        dst_x: u16,
-        dst_y: u16,
-        src: Canvas,
-        region: Size,
-    ) void {
-        for (0..region.height) |row| {
-            const src_start = row * src.screen.width;
-            const src_end = src_start + region.width;
-            const dst_start = dst_x + ((row + dst_y) * dst.screen.width);
-            const dst_end = dst_start + region.width;
-            @memcpy(dst.screen.buf[dst_start..dst_end], src.screen.buf[src_start..src_end]);
-        }
-    }
-
-    pub fn fillStyle(self: Canvas, style: vaxis.Style, region: Size) void {
-        for (0..region.height) |row| {
-            for (0..region.width) |col| {
-                var cell = self.screen.readCell(col, row) orelse continue;
-                cell.style = style;
-                cell.default = false;
-                self.screen.writeCell(col, row, cell);
-            }
-        }
     }
 };
 
