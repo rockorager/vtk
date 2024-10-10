@@ -118,21 +118,22 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
             return;
 
         defer _ = arena.reset(.retain_capacity);
-        const canvas: Canvas = .{
+
+        const draw_context: vtk.DrawContext = .{
             .arena = arena.allocator(),
-            .screen = &vx.screen,
-            .x_off = 0,
-            .y_off = 0,
             .min = .{ .width = 0, .height = 0 },
             .max = .{
                 .width = @intCast(vx.screen.width),
                 .height = @intCast(vx.screen.height),
             },
+            .unicode = &vx.unicode,
+            .width_method = vx.screen.width_method,
         };
         const win = vx.window();
         win.clear();
         vx.setMouseShape(.default);
-        _ = try widget.draw(canvas);
+        const surface = try widget.draw(draw_context);
+        surface.render(win);
 
         try vx.render(buffered.writer().any());
         try buffered.flush();

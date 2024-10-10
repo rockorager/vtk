@@ -22,9 +22,9 @@ pub fn widget(self: *const Text) vtk.Widget {
     };
 }
 
-fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const self: *const Text = @ptrCast(@alignCast(ptr));
-    return self.draw(canvas);
+    return self.view(ctx);
 }
 
 pub fn view(self: Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -253,9 +253,9 @@ pub const SoftwrapIterator = struct {
 
     const soft_breaks = " \t";
 
-    fn init(buf: []const u8, canvas: vtk.Canvas) SoftwrapIterator {
+    fn init(buf: []const u8, ctx: vtk.DrawContext) SoftwrapIterator {
         return .{
-            .canvas = canvas,
+            .ctx = ctx,
             .hard_iter = .{ .buf = buf },
         };
     }
@@ -284,7 +284,7 @@ pub const SoftwrapIterator = struct {
                 if (trimmed_width > self.ctx.max.width) {
                     self.index += trimmed_bytes;
                     // Won't fit on line by itself, so fit as much on this line as we can
-                    var iter = self.ctx.screen.unicode.graphemeIterator(trimmed);
+                    var iter = self.ctx.graphemeIterator(trimmed);
                     while (iter.next()) |item| {
                         const grapheme = item.bytes(trimmed);
                         const w = self.ctx.stringWidth(grapheme);

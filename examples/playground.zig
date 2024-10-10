@@ -1,6 +1,14 @@
 const std = @import("std");
 const vtk = @import("vtk");
 
+const lorem_ipsum =
+    \\Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce finibus odio eu tellus dignissim finibus. Nullam tristique erat elit, commodo faucibus turpis consequat et. Ut vitae elit ex. Cras aliquam ante at nisi dapibus, placerat eleifend ligula interdum. Proin auctor tempus magna, sed luctus lorem scelerisque ac. Cras id diam leo. Curabitur ultrices tempus massa quis porta. Aenean in augue quis sapien mollis ullamcorper quis et dui. Vivamus ornare velit ut magna semper tincidunt. Nam id leo ipsum. Fusce non maximus lectus. Etiam tempus quam ut molestie eleifend.
+    \\
+    \\Suspendisse a nisi vitae nunc vulputate rutrum eu nec nulla. Morbi id sapien eros. Vivamus sit amet venenatis sem. Aliquam velit eros, finibus eget dapibus non, semper et nisl. Nulla consectetur venenatis lacinia. Pellentesque vel turpis sapien. Praesent ipsum sem, eleifend sit amet ullamcorper et, sagittis elementum sem.
+    \\
+    \\Cras consequat sit amet erat vel fringilla. Nullam eu elementum orci. Vestibulum ut iaculis dolor. Nulla sit amet congue augue, in laoreet libero. Nulla sodales erat eget sollicitudin ultricies. Etiam in urna quis neque imperdiet bibendum. Nulla ac tortor tristique, luctus lorem et, vehicula dolor. 
+;
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
@@ -14,18 +22,10 @@ pub fn main() !void {
     const app = try vtk.App.create(allocator);
     defer app.destroy();
 
-    var button = vtk.Button.init("Hello, World!", null, onClick);
-
-    const root = (vtk.Center{
-        .child = (vtk.Padding{
-            .child = button.widget(),
-            .padding = vtk.Padding.all(10),
-        }).widget(),
+    const root = (vtk.Text{
+        .text = lorem_ipsum,
+        .text_align = .center,
     }).widget();
 
     try app.run(root, .{});
-}
-
-fn onClick(_: ?*anyopaque) void {
-    std.log.err("clicked", .{});
 }

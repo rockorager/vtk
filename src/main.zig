@@ -92,7 +92,7 @@ pub const DrawContext = struct {
         return vaxis.gwidth.gwidth(
             str,
             self.width_method,
-            self.unicode.width_data,
+            &self.unicode.width_data,
         );
     }
 
@@ -151,14 +151,14 @@ pub const Size = struct {
 pub const Widget = struct {
     userdata: *anyopaque,
     eventHandler: *const fn (userdata: *anyopaque, ctx: Context, event: Event) anyerror!void,
-    drawFn: *const fn (userdata: *anyopaque, canvas: Canvas) anyerror!Size,
+    drawFn: *const fn (userdata: *anyopaque, ctx: DrawContext) Allocator.Error!Surface,
 
     pub fn handleEvent(self: Widget, ctx: Context, event: Event) anyerror!void {
         return self.eventHandler(self.userdata, ctx, event);
     }
 
-    pub fn draw(self: Widget, canvas: Canvas) anyerror!Size {
-        return self.drawFn(self.userdata, canvas);
+    pub fn draw(self: Widget, ctx: DrawContext) Allocator.Error!Surface {
+        return self.drawFn(self.userdata, ctx);
     }
 };
 
@@ -210,7 +210,7 @@ pub const Surface = struct {
     /// Contents of this surface
     buffer: []vaxis.Cell, // len == width * height
 
-    children: []const SubSurface,
+    children: []SubSurface,
 
     pub fn init(allocator: Allocator, widget: Widget, size: Size) Allocator.Error!Surface {
         const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
@@ -230,6 +230,13 @@ pub const Surface = struct {
         self.buffer[i] = cell;
     }
 
+    pub fn readCell(self: Surface, col: usize, row: usize) vaxis.Cell {
+        assert(col < self.size.width and row < self.size.height);
+        const i = (row * self.size.width) + col;
+        assert(i < self.buffer.len);
+        return self.buffer[i];
+    }
+
     /// Creates a new surface of the same width, with the buffer trimmed to a given height
     pub fn trimHeight(self: Surface, height: u16) Surface {
         assert(height <= self.size.height);
@@ -240,6 +247,30 @@ pub const Surface = struct {
             .children = self.children,
         };
     }
+
+    pub fn render(self: Surface, win: vaxis.Window) void {
+        // render self first
+        for (0..self.size.height) |row| {
+            for (0..self.size.width) |col| {
+                const cell = self.readCell(col, row);
+                win.writeCell(col, row, cell);
+            }
+        }
+
+        // Sort children by z-index
+        std.mem.sort(SubSurface, self.children, {}, SubSurface.lessThan);
+
+        // for each child, we make a window and render to it
+        for (self.children) |child| {
+            const child_win = win.child(.{
+                .x_off = child.origin.col,
+                .y_off = child.origin.row,
+                .width = .{ .limit = child.surface.size.width },
+                .height = .{ .limit = child.surface.size.height },
+            });
+            child.surface.render(child_win);
+        }
+    }
 };
 
 pub const SubSurface = struct {
@@ -249,6 +280,10 @@ pub const SubSurface = struct {
     surface: Surface,
     /// z-index relative to siblings
     z_index: u8,
+
+    pub fn lessThan(_: void, lhs: SubSurface, rhs: SubSurface) bool {
+        return lhs.z_index < rhs.z_index;
+    }
 };
 
 pub const Canvas = struct {
