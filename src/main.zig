@@ -162,6 +162,12 @@ pub const Point = struct {
     col: u16,
 };
 
+/// Result of a hit test
+pub const HitResult = struct {
+    local: Point,
+    widget: Widget,
+};
+
 pub const Surface = struct {
     /// Size of this surface
     size: Size,
@@ -226,6 +232,21 @@ pub const Surface = struct {
         };
     }
 
+    /// Walks the Surface tree to produce a list of all widgets that intersect Point. Point will
+    /// always be translated to local Surface coordinates. Asserts that this Surface does contain Point
+    pub fn hitTest(self: Surface, list: *std.ArrayList(HitResult), point: Point) Allocator.Error!void {
+        assert(point.col < self.size.width and point.row < self.size.height);
+        try list.append(.{ .local = point, .widget = self.widget });
+        for (self.children) |child| {
+            if (!child.containsPoint(point)) continue;
+            const child_point: Point = .{
+                .row = point.row - child.origin.row,
+                .col = point.col - child.origin.col,
+            };
+            try child.surface.hitTest(list, child_point);
+        }
+    }
+
     pub fn render(self: Surface, win: vaxis.Window) void {
         // render self first
         for (0..self.size.height) |row| {
@@ -261,6 +282,15 @@ pub const SubSurface = struct {
 
     pub fn lessThan(_: void, lhs: SubSurface, rhs: SubSurface) bool {
         return lhs.z_index < rhs.z_index;
+    }
+
+    /// Returns true if this SubSurface contains Point. Point must be in parent local units
+    pub fn containsPoint(self: SubSurface, point: Point) bool {
+        if (point.col < self.origin.col or
+            point.row < self.origin.row or
+            point.col >= (self.origin.col + self.surface.size.width) or
+            point.row >= (self.origin.row + self.surface.size.height)) return false;
+        return true;
     }
 };
 

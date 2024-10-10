@@ -87,6 +87,8 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
 
     const ctx = self.context();
 
+    var mouse: ?vaxis.Mouse = null;
+
     while (true) {
         std.time.sleep(tick_ms * std.time.ns_per_ms);
 
@@ -100,6 +102,7 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
                         ctx.postEvent(.quit);
                     }
                 },
+                .mouse => |m| mouse = m,
                 .winsize => |ws| {
                     try vx.resize(self.allocator, buffered.writer().any(), ws);
                     try buffered.flush();
@@ -133,6 +136,19 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         win.clear();
         vx.setMouseShape(.default);
         const surface = try widget.draw(draw_context);
+        if (mouse) |m| {
+            var hits = std.ArrayList(vtk.HitResult).init(arena.allocator());
+            defer hits.deinit();
+            const sub: vtk.SubSurface = .{
+                .origin = .{ .row = 0, .col = 0 },
+                .surface = surface,
+                .z_index = 0,
+            };
+            const mouse_point: vtk.Point = .{ .row = @intCast(m.row), .col = @intCast(m.col) };
+            if (sub.containsPoint(mouse_point)) {
+                try surface.hitTest(&hits, mouse_point);
+            }
+        }
         surface.render(win);
 
         try vx.render(buffered.writer().any());
