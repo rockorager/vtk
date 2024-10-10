@@ -27,13 +27,13 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn handleEvent(self: FlexColumn, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+pub fn handleEvent(self: *const FlexColumn, ctx: vtk.Context, event: vtk.Event) anyerror!void {
     for (self.children) |child| {
         try child.widget.handleEvent(ctx, event);
     }
 }
 
-pub fn draw(self: FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+pub fn draw(self: *const FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     if (self.children.len == 0) return vtk.Surface.init(ctx.arena, self.widget(), ctx.min);
 
     // Calculate initial height

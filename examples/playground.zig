@@ -22,10 +22,23 @@ pub fn main() !void {
     const app = try vtk.App.create(allocator);
     defer app.destroy();
 
-    var spinner: vtk.Spinner = .{};
-    spinner.start(app.context());
+    var button: vtk.Button = .{
+        .label = "hello world",
+        .on_click = onClick,
+    };
 
-    const root = spinner.widget();
+    button.userdata = &button;
+    const padding: vtk.Padding = .{
+        .child = button.widget(),
+        .padding = vtk.Padding.all(8),
+    };
+
+    const root = padding.widget();
 
     try app.run(root, .{});
+}
+
+fn onClick(maybe_ptr: ?*anyopaque) void {
+    const button: *vtk.Button = @ptrCast(@alignCast(maybe_ptr.?));
+    button.label = "clicked";
 }

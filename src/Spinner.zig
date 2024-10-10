@@ -59,11 +59,11 @@ pub fn widget(self: *Spinner) vtk.Widget {
 }
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
-    const self: *Spinner = @ptrCast(@alignCast(ptr));
+    const self: *const Spinner = @ptrCast(@alignCast(ptr));
     return self.draw(ctx);
 }
 
-pub fn draw(self: *Spinner, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+pub fn draw(self: *const Spinner, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const size: vtk.Size = .{
         .width = @max(1, ctx.min.width),
         .height = @max(1, ctx.min.height),

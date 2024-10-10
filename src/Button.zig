@@ -3,6 +3,8 @@ const vaxis = @import("vaxis");
 
 const vtk = @import("main.zig");
 
+const Allocator = std.mem.Allocator;
+
 const Center = @import("Center.zig");
 const Text = @import("Text.zig");
 
@@ -44,17 +46,24 @@ fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) a
 
 pub fn handleEvent(self: *Button, _: vtk.Context, event: vtk.Event) anyerror!void {
     switch (event) {
-        .mouse => |mouse| self.mouse = mouse,
+        .mouse => |mouse| {
+            if (self.mouse_down and mouse.type != .press) {
+                self.on_click(self.userdata);
+            }
+            if (mouse.type == .press and mouse.button == .left) {
+                self.mouse_down = true;
+            }
+        },
         else => {},
     }
 }
 
-fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const self: *Button = @ptrCast(@alignCast(ptr));
-    return self.draw(canvas);
+    return self.draw(ctx);
 }
 
-pub fn draw(self: *Button, canvas: vtk.Canvas) anyerror!vtk.Size {
+pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const text: Text = .{
         .style = self.style,
         .text = self.label,
@@ -62,8 +71,19 @@ pub fn draw(self: *Button, canvas: vtk.Canvas) anyerror!vtk.Size {
     };
 
     const center: Center = .{ .child = text.widget() };
-    const size = try center.draw(canvas);
+    const surf = try center.draw(ctx);
+    for (0..surf.buffer.len) |i| {
+        var cell = surf.buffer[i];
+        cell.style = self.style;
+        cell.default = false;
+        surf.buffer[i] = cell;
+    }
 
-    canvas.fillStyle(self.style, size);
-    return size;
+    // Masquerade as Center
+    return .{
+        .size = surf.size,
+        .widget = self.widget(),
+        .buffer = surf.buffer,
+        .children = surf.children,
+    };
 }

@@ -58,11 +58,11 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn handleEvent(self: Padding, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+pub fn handleEvent(self: *const Padding, ctx: vtk.Context, event: vtk.Event) anyerror!void {
     return self.child.handleEvent(ctx, event);
 }
 
-pub fn draw(self: Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+pub fn draw(self: *const Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const pad = self.padding;
     const inner_min: vtk.Size = .{
         .width = ctx.min.width -| (pad.right + pad.left),

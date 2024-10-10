@@ -33,7 +33,7 @@ pub fn handleEvent(self: *const FlexRow, ctx: vtk.Context, event: vtk.Event) any
     }
 }
 
-pub fn draw(self: FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     if (self.children.len == 0) return vtk.Surface.init(ctx.arena, self.widget(), ctx.min);
 
     // Calculate initial width

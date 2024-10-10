@@ -27,11 +27,11 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn handleEvent(self: Center, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+pub fn handleEvent(self: *const Center, ctx: vtk.Context, event: vtk.Event) anyerror!void {
     return self.child.handleEvent(ctx, event);
 }
 
-pub fn draw(self: Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+pub fn draw(self: *const Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const child = try self.child.draw(ctx);
 
     const x = (ctx.max.width - child.size.width) / 2;

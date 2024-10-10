@@ -27,7 +27,7 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn draw(self: Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const container_width = switch (self.width_basis) {
         .parent => ctx.max.width,
         .longest_line => @min(ctx.max.width, @max(ctx.min.width, self.findWidestLine(ctx))),

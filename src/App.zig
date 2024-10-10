@@ -148,6 +148,12 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
             if (sub.containsPoint(mouse_point)) {
                 try surface.hitTest(&hits, mouse_point);
             }
+            while (hits.popOrNull()) |item| {
+                var m_local = m;
+                m_local.col = item.local.col;
+                m_local.row = item.local.row;
+                try item.widget.handleEvent(ctx, .{ .mouse = m_local });
+            }
         }
         surface.render(win);
 
