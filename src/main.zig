@@ -129,22 +129,6 @@ pub const DrawContext = struct {
 pub const Size = struct {
     width: u16 = 0,
     height: u16 = 0,
-
-    // Resolves the size, preferring an odd number. Assumes, but does not assert, that wants is an odd
-    // number. This means the result is only adjusted if it isn't the max or the min
-    pub fn preferOdd(min: u16, max: u16, wants: u16) u16 {
-        const tgt = resolveConstraint(min, max, wants);
-        // Already odd
-        if (tgt % 2 != 0) return tgt;
-
-        // At max, have room to shrink
-        if (tgt == max and tgt > min) return tgt - 1;
-
-        // At min, have room to grow
-        if (tgt == min and tgt < max) return tgt + 1;
-
-        return tgt;
-    }
 };
 
 /// The Widget interface
@@ -172,29 +156,6 @@ pub const FlexItem = struct {
         return .{ .widget = child, .flex = flex };
     }
 };
-
-pub fn resolveConstraint(min: u16, max: u16, wants: u16) u16 {
-    std.debug.assert(min <= max);
-    // 4 cases:
-    // 1. no min, no pref => max
-    // 2. max < wants => max
-    // 3. min > wants => min
-    // 4. wants
-    if (wants == 0 and min == 0)
-        return max
-    else if (max < wants)
-        return max
-    else if (min > wants)
-        return min
-    else {
-        std.debug.assert(wants >= min and wants <= max);
-        return wants;
-    }
-}
-
-test resolveConstraint {
-    try std.testing.expectEqual(3, resolveConstraint(0, 10, 3));
-}
 
 pub const Point = struct {
     row: u16,
