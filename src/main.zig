@@ -1,6 +1,12 @@
 const std = @import("std");
 pub const vaxis = @import("vaxis");
 
+const grapheme = vaxis.grapheme;
+
+const assert = std.debug.assert;
+
+const Allocator = std.mem.Allocator;
+
 pub const App = @import("App.zig");
 pub const Button = @import("Button.zig");
 pub const Center = @import("Center.zig");
@@ -71,8 +77,53 @@ pub const Context = struct {
 };
 
 pub const DrawContext = struct {
+    // Allocator backed by an arena. Widgets do not need to free their own resources, they will be
+    // freed after rendering
     arena: std.mem.Allocator,
+    // Constraints
     min: Size,
+    max: Size,
+
+    // Unicode stuff
+    unicode: *const vaxis.Unicode,
+    width_method: vaxis.gwidth.Method,
+
+    pub fn stringWidth(self: DrawContext, str: []const u8) usize {
+        return vaxis.gwidth.gwidth(
+            str,
+            self.width_method,
+            self.unicode.width_data,
+        );
+    }
+
+    pub fn graphemeIterator(self: DrawContext, str: []const u8) grapheme.Iterator {
+        return self.unicode.graphemeIterator(str);
+    }
+
+    pub fn withContstraints(self: DrawContext, min: Size, max: Size) DrawContext {
+        return .{
+            .arena = self.arena,
+            .min = min,
+            .max = max,
+            .unicode = self.unicode,
+            .width_method = self.width_method,
+        };
+    }
+
+    pub fn withContraintsAndAllocator(
+        self: DrawContext,
+        min: Size,
+        max: Size,
+        arena: Allocator,
+    ) DrawContext {
+        return .{
+            .arena = arena,
+            .min = min,
+            .max = max,
+            .unicode = self.unicode,
+            .width_method = self.width_method,
+        };
+    }
 };
 
 pub const Size = struct {
@@ -145,9 +196,66 @@ test resolveConstraint {
     try std.testing.expectEqual(3, resolveConstraint(0, 10, 3));
 }
 
+pub const Point = struct {
+    row: u16,
+    col: u16,
+};
+
+pub const Surface = struct {
+    /// Size of this surface
+    size: Size,
+    /// The widget this surface belongs to
+    widget: Widget,
+
+    /// Contents of this surface
+    buffer: []vaxis.Cell, // len == width * height
+
+    children: []const SubSurface,
+
+    pub fn init(allocator: Allocator, widget: Widget, size: Size) Allocator.Error!Surface {
+        const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
+        return .{
+            .size = size,
+            .widget = widget,
+            .buffer = buffer,
+            .children = &.{},
+        };
+    }
+
+    pub fn writeCell(self: Surface, col: u16, row: u16, cell: vaxis.Cell) void {
+        if (self.size.width <= col) return;
+        if (self.size.height <= row) return;
+        const i = (row * self.size.width) + col;
+        assert(i < self.buffer.len);
+        self.buffer[i] = cell;
+    }
+
+    /// Creates a new surface of the same width, with the buffer trimmed to a given height
+    pub fn trimHeight(self: Surface, height: u16) Surface {
+        assert(height <= self.size.height);
+        return .{
+            .size = .{ .width = self.size.width, .height = height },
+            .widget = self.widget,
+            .buffer = self.buffer[0 .. self.size.width * height],
+            .children = self.children,
+        };
+    }
+};
+
+pub const SubSurface = struct {
+    /// Origin relative to parent
+    origin: Point,
+    /// This surface
+    surface: Surface,
+    /// z-index relative to siblings
+    z_index: u8,
+};
+
 pub const Canvas = struct {
     arena: std.mem.Allocator,
     screen: *vaxis.Screen,
+    /// This slice is the size of the screen and stores the widget responsible for drawing each cell
+    owners: []?Widget,
 
     // offset from origin of screen
     x_off: u16,
