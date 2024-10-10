@@ -1,6 +1,8 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
 
+const Allocator = std.mem.Allocator;
+
 const vtk = @import("main.zig");
 
 const Center = @This();
@@ -20,21 +22,27 @@ fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) a
     return self.handleEvent(ctx, event);
 }
 
-fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const self: *const Center = @ptrCast(@alignCast(ptr));
-    return self.draw(canvas);
+    return self.draw(ctx);
 }
 
-pub fn handleEvent(self: *const Center, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+pub fn handleEvent(self: Center, ctx: vtk.Context, event: vtk.Event) anyerror!void {
     return self.child.handleEvent(ctx, event);
 }
 
-pub fn draw(self: *const Center, canvas: vtk.Canvas) anyerror!vtk.Size {
-    const layout_canvas = try canvas.layoutCanvas(canvas.min, canvas.max);
-    const size = try self.child.draw(layout_canvas);
+pub fn draw(self: Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+    const child = try self.child.draw(ctx);
 
-    const x = (canvas.max.width - size.width) / 2;
-    const y = (canvas.max.height - size.height) / 2;
-    canvas.copyRegion(x, y, layout_canvas, size);
-    return canvas.max;
+    const x = (ctx.max.width - child.size.width) / 2;
+    const y = (ctx.max.height - child.size.height) / 2;
+
+    const children = try ctx.arena.alloc(vtk.SubSurface, 1);
+    children[0] = .{
+        .origin = .{ .col = x, .row = y },
+        .z_index = 0,
+        .surface = child,
+    };
+
+    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), ctx.max, children);
 }
