@@ -3,6 +3,8 @@ const vaxis = @import("vaxis");
 
 const vtk = @import("main.zig");
 
+const Allocator = std.mem.Allocator;
+
 const FlexRow = @This();
 
 children: []const vtk.FlexItem,
@@ -20,9 +22,9 @@ fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) a
     return self.handleEvent(ctx, event);
 }
 
-fn typeErasedDrawFn(ptr: *anyopaque, canvas: vtk.Canvas) anyerror!vtk.Size {
+fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const self: *const FlexRow = @ptrCast(@alignCast(ptr));
-    return self.draw(canvas);
+    return self.draw(ctx);
 }
 
 pub fn handleEvent(self: *const FlexRow, ctx: vtk.Context, event: vtk.Event) anyerror!void {
@@ -31,54 +33,66 @@ pub fn handleEvent(self: *const FlexRow, ctx: vtk.Context, event: vtk.Event) any
     }
 }
 
-pub fn draw(self: *const FlexRow, canvas: vtk.Canvas) anyerror!vtk.Size {
-    if (self.children.len == 0) return .{ .width = 0, .height = 0 };
+pub fn draw(self: FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+    if (self.children.len == 0) return vtk.Surface.init(ctx.arena, self.widget(), ctx.min);
 
     // Calculate initial width
-    const initial_width: u16 = canvas.max.width / @as(u16, @intCast(self.children.len));
+    const initial_width: u16 = ctx.max.width / @as(u16, @intCast(self.children.len));
+    // Store the inherent size of each widget
+    const size_list = try ctx.arena.alloc(u16, self.children.len);
 
-    // Make a layout canvas the same size as our canvas
-    var layout_canvas = try canvas.layoutCanvas(
+    var layout_arena = std.heap.ArenaAllocator.init(ctx.arena);
+
+    const layout_ctx = ctx.withContraintsAndAllocator(
         .{ .width = 0, .height = 0 },
-        canvas.max,
+        .{ .width = initial_width, .height = ctx.max.height },
+        layout_arena.allocator(),
     );
 
-    // Set the max width for layout to our initial width
-    layout_canvas.max = .{ .width = initial_width, .height = canvas.max.height };
-
-    // Store the inherent size of each widget
-    var size_list = std.ArrayList(u16).init(canvas.arena);
     var first_pass_width: u16 = 0;
     var total_flex: u16 = 0;
-    for (self.children) |child| {
-        const size = try child.widget.drawFn(child.widget.userdata, layout_canvas);
-        first_pass_width += size.width;
+    for (self.children, 0..) |child, i| {
+        const surf = try child.widget.draw(layout_ctx);
+        first_pass_width += surf.size.width;
         total_flex += child.flex;
-        try size_list.append(size.width);
+        size_list[i] = surf.size.width;
     }
+
+    // We are done with the layout arena
+    layout_arena.deinit();
+
+    // make our children list
+    var children = std.ArrayList(vtk.SubSurface).init(ctx.arena);
 
     // Draw again, but with distributed widths
     var second_pass_width: u16 = 0;
     var max_height: u16 = 0;
-    const remaining_space = canvas.max.width - first_pass_width;
+    const remaining_space = ctx.max.width - first_pass_width;
     for (self.children, 1..) |child, i| {
-        layout_canvas.clear();
-        const inherent_width = size_list.items[i - 1];
+        const inherent_width = size_list[i - 1];
         const child_width = if (child.flex == 0)
             inherent_width
         else if (i == self.children.len)
             // If we are the last one, we just get the remainder
-            canvas.max.width - second_pass_width
+            ctx.max.width - second_pass_width
         else
             inherent_width + (remaining_space * child.flex) / total_flex;
 
-        // Enforce the size
-        layout_canvas.max.width = child_width;
-        layout_canvas.min.width = child_width;
-        const size = try child.widget.drawFn(child.widget.userdata, layout_canvas);
-        canvas.copyRegion(second_pass_width, 0, layout_canvas, size);
-        max_height = @max(max_height, size.height);
-        second_pass_width += size.width;
+        // Create a context for the child
+        const child_ctx = ctx.withContstraints(
+            .{ .width = child_width, .height = 0 },
+            .{ .width = child_width, .height = ctx.max.height },
+        );
+        const surf = try child.widget.draw(child_ctx);
+
+        try children.append(.{
+            .origin = .{ .col = second_pass_width, .row = 0 },
+            .surface = surf,
+            .z_index = 0,
+        });
+        max_height = @max(max_height, surf.size.height);
+        second_pass_width += surf.size.width;
     }
-    return .{ .width = second_pass_width, .height = max_height };
+    const size = .{ .width = second_pass_width, .height = max_height };
+    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), size, children.items);
 }

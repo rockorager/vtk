@@ -38,6 +38,8 @@ pub fn draw(self: FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
 
     // Calculate initial height
     const initial_height: u16 = ctx.max.height / @as(u16, @intCast(self.children.len));
+    // Store the inherent size of each widget
+    const size_list = try ctx.arena.alloc(u16, self.children.len);
 
     var layout_arena = std.heap.ArenaAllocator.init(ctx.arena);
 
@@ -48,14 +50,13 @@ pub fn draw(self: FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
     );
 
     // Store the inherent size of each widget
-    var size_list = std.ArrayList(u16).init(ctx.arena);
     var first_pass_height: u16 = 0;
     var total_flex: u16 = 0;
-    for (self.children) |child| {
+    for (self.children, 0..) |child, i| {
         const surf = try child.widget.draw(layout_ctx);
         first_pass_height += surf.size.height;
         total_flex += child.flex;
-        try size_list.append(surf.size.height);
+        size_list[i] = surf.size.height;
     }
 
     // We are done with the layout arena
@@ -69,7 +70,7 @@ pub fn draw(self: FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
     var max_width: u16 = 0;
     const remaining_space = ctx.max.height - first_pass_height;
     for (self.children, 1..) |child, i| {
-        const inherent_height = size_list.items[i - 1];
+        const inherent_height = size_list[i - 1];
         const child_height = if (child.flex == 0)
             inherent_height
         else if (i == self.children.len)

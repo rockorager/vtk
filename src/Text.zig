@@ -30,7 +30,7 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 pub fn draw(self: Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const container_width = switch (self.width_basis) {
         .parent => ctx.max.width,
-        .longest_line => self.findWidestLine(ctx),
+        .longest_line => @min(ctx.max.width, @max(ctx.min.width, self.findWidestLine(ctx))),
     };
 
     // Create a surface of target width and max height. We'll trim the result after drawing
