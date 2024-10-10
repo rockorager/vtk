@@ -24,10 +24,10 @@ pub fn widget(self: *const Text) vtk.Widget {
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const self: *const Text = @ptrCast(@alignCast(ptr));
-    return self.view(ctx);
+    return self.draw(ctx);
 }
 
-pub fn view(self: Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+pub fn draw(self: Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const container_width = switch (self.width_basis) {
         .parent => ctx.max.width,
         .longest_line => self.findWidestLine(ctx),
@@ -104,86 +104,8 @@ pub fn view(self: Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     return surface.trimHeight(@max(row, ctx.min.height));
 }
 
-pub fn draw(self: *const Text, canvas: vtk.Canvas) anyerror!vtk.Size {
-    var widest_line: u16 = switch (self.text_align) {
-        .left => 0,
-        .center,
-        .right,
-        => self.findWidestLine(canvas),
-    };
-
-    var row: u16 = 0;
-    if (self.softwrap) {
-        var iter = SoftwrapIterator.init(self.text, canvas);
-        while (iter.next()) |line| {
-            if (row >= canvas.max.height) break;
-            defer row += 1;
-            widest_line = @max(widest_line, line.width);
-            var col: u16 = switch (self.text_align) {
-                .left => 0,
-                .center => (widest_line - line.width) / 2,
-                .right => widest_line - line.width,
-            };
-            var char_iter = canvas.screen.unicode.graphemeIterator(line.bytes);
-            while (char_iter.next()) |char| {
-                const grapheme = char.bytes(line.bytes);
-                const grapheme_width = canvas.stringWidth(grapheme);
-                canvas.writeCell(col, row, .{
-                    .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                    .style = self.style,
-                });
-                col += @intCast(grapheme_width);
-            }
-        }
-    } else {
-        var line_iter: LineIterator = .{ .buf = self.text };
-        while (line_iter.next()) |line| {
-            if (row >= canvas.max.height) break;
-            const line_width = canvas.stringWidth(line);
-            defer row += 1;
-            const resolved_line_width = @min(canvas.max.width, line_width);
-            widest_line = @max(widest_line, resolved_line_width);
-            var col: u16 = switch (self.text_align) {
-                .left => 0,
-                .center => (canvas.max.width - resolved_line_width) / 2,
-                .right => canvas.max.width - resolved_line_width,
-            };
-            var char_iter = canvas.screen.unicode.graphemeIterator(line);
-            while (char_iter.next()) |char| {
-                if (col >= canvas.max.width) break;
-                const grapheme = char.bytes(line);
-                const grapheme_width = canvas.stringWidth(grapheme);
-
-                if (col + grapheme_width >= canvas.max.width and
-                    line_width > canvas.max.width and
-                    self.overflow == .ellipsis)
-                {
-                    canvas.writeCell(col, row, .{
-                        .char = .{ .grapheme = "…", .width = 1 },
-                        .style = self.style,
-                    });
-                    col = canvas.max.width;
-                } else {
-                    canvas.writeCell(col, row, .{
-                        .char = .{ .grapheme = grapheme, .width = grapheme_width },
-                        .style = self.style,
-                    });
-                    col += @intCast(grapheme_width);
-                }
-            }
-        }
-    }
-    if (self.width_basis == .parent) widest_line = canvas.max.width;
-    const region: vtk.Size = .{
-        .width = @max(widest_line, canvas.min.width),
-        .height = @max(row, canvas.min.height),
-    };
-    canvas.fillStyle(self.style, region);
-    return region;
-}
-
 /// Finds the widest line within the viewable portion of ctx
-fn findWidestLine(self: *const Text, ctx: vtk.DrawContext) u16 {
+fn findWidestLine(self: Text, ctx: vtk.DrawContext) u16 {
     if (self.width_basis == .parent) return ctx.max.width;
     var row: u16 = 0;
     var max_width: u16 = 0;
@@ -335,8 +257,8 @@ pub const SoftwrapIterator = struct {
 
 test "SoftwrapIterator: LF breaks" {
     const t = @import("test.zig");
-    const canvas = try t.createCanvas(std.testing.allocator, 20, 10);
-    defer t.destroyCanvas(std.testing.allocator, canvas);
+    const canvas = try t.createDrawContext(std.testing.allocator, 20, 10);
+    defer t.destroyDrawContext(canvas);
     var iter = SoftwrapIterator.init("Hello, \n world", canvas);
     const first = iter.next();
     try std.testing.expect(first != null);
@@ -354,8 +276,8 @@ test "SoftwrapIterator: LF breaks" {
 
 test "SoftwrapIterator: soft breaks that fit" {
     const t = @import("test.zig");
-    const canvas = try t.createCanvas(std.testing.allocator, 6, 10);
-    defer t.destroyCanvas(std.testing.allocator, canvas);
+    const canvas = try t.createDrawContext(std.testing.allocator, 6, 10);
+    defer t.destroyDrawContext(canvas);
     var iter = SoftwrapIterator.init("Hello, \nworld", canvas);
     const first = iter.next();
     try std.testing.expect(first != null);
@@ -373,8 +295,8 @@ test "SoftwrapIterator: soft breaks that fit" {
 
 test "SoftwrapIterator: soft breaks that are longer than width" {
     const t = @import("test.zig");
-    const canvas = try t.createCanvas(std.testing.allocator, 6, 10);
-    defer t.destroyCanvas(std.testing.allocator, canvas);
+    const canvas = try t.createDrawContext(std.testing.allocator, 6, 10);
+    defer t.destroyDrawContext(canvas);
     var iter = SoftwrapIterator.init("very-long-word \nworld", canvas);
     const first = iter.next();
     try std.testing.expect(first != null);
@@ -402,8 +324,8 @@ test "SoftwrapIterator: soft breaks that are longer than width" {
 
 test "SoftwrapIterator: soft breaks with leading spaces" {
     const t = @import("test.zig");
-    const canvas = try t.createCanvas(std.testing.allocator, 6, 10);
-    defer t.destroyCanvas(std.testing.allocator, canvas);
+    const canvas = try t.createDrawContext(std.testing.allocator, 6, 10);
+    defer t.destroyDrawContext(canvas);
     var iter = SoftwrapIterator.init("Hello,        \n world", canvas);
     const first = iter.next();
     try std.testing.expect(first != null);
