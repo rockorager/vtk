@@ -19,8 +19,8 @@ pub const Spinner = @import("Spinner.zig");
 const log = std.log.scoped(.vtk);
 
 pub const AppEvent = struct {
-    kind: u16,
-    event: ?*const anyopaque = null,
+    name: []const u8,
+    data: ?*const anyopaque = null,
 };
 
 pub const Event = union(enum) {
