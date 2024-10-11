@@ -28,14 +28,8 @@ pub fn main() !void {
     };
 
     button.userdata = &button;
-    const padding: vtk.Padding = .{
-        .child = button.widget(),
-        .padding = vtk.Padding.all(8),
-    };
 
-    const root = padding.widget();
-
-    try app.run(root, .{});
+    try app.run(button.widget(), .{});
 }
 
 fn onClick(maybe_ptr: ?*anyopaque) void {
