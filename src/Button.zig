@@ -58,7 +58,8 @@ pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
             }
             if (mouse.type == .press and mouse.button == .left) {
                 self.mouse_down = true;
-                return .consume_event;
+                self.cmds[0] = .redraw;
+                return .{ .batch = &self.cmds };
             }
             if (!self.has_mouse) {
                 self.has_mouse = true;
@@ -83,8 +84,15 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 }
 
 pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+    const style: vaxis.Style = if (self.mouse_down)
+        self.mouse_down_style
+    else if (self.has_mouse)
+        self.hover_style
+    else
+        self.style;
+
     const text: Text = .{
-        .style = self.style,
+        .style = style,
         .text = self.label,
         .text_align = .center,
     };
@@ -93,7 +101,7 @@ pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const surf = try center.draw(ctx);
     for (0..surf.buffer.len) |i| {
         var cell = surf.buffer[i];
-        cell.style = self.style;
+        cell.style = style;
         cell.default = false;
         surf.buffer[i] = cell;
     }
