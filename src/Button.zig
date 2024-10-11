@@ -10,15 +10,21 @@ const Text = @import("Text.zig");
 
 const Button = @This();
 
+// User supplied values
 label: []const u8,
-on_click: *const fn (?*anyopaque) ?vtk.Command,
+onClick: *const fn (?*anyopaque) ?vtk.Command,
 userdata: ?*anyopaque = null,
+
+// Styles
 style: vaxis.Style = .{ .reverse = true },
 hover_style: vaxis.Style = .{ .fg = .{ .index = 3 }, .reverse = true },
 mouse_down_style: vaxis.Style = .{ .fg = .{ .index = 4 }, .reverse = true },
+
+// State
 mouse_down: bool = false,
 has_mouse: bool = false,
 
+// Preallocated batch command
 cmds: [2]vtk.Command = [_]vtk.Command{ .consume_event, .consume_event },
 
 pub fn init(
@@ -51,7 +57,7 @@ pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
         .mouse => |mouse| {
             if (self.mouse_down and mouse.type == .release) {
                 self.mouse_down = false;
-                if (self.on_click(self.userdata)) |cmd| {
+                if (self.onClick(self.userdata)) |cmd| {
                     self.cmds[0] = cmd;
                     return .{ .batch = &self.cmds };
                 }

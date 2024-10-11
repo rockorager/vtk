@@ -62,7 +62,7 @@ pub fn main() !void {
         .count = 0,
         .button = .{
             .label = "",
-            .on_click = Model.onClick,
+            .onClick = Model.onClick,
             .userdata = model,
         },
     };
