@@ -63,7 +63,7 @@ pub const Command = union(enum) {
     tick: Tick,
     /// The event was handled, do not pass it on
     consume_event,
-    /// The event produced multiple commands
+    /// The event produced multiple commands. The lifetime of the slice must be at least one frame
     batch: []const Command,
     /// Tells the event loop to redraw the UI
     redraw,
@@ -186,8 +186,8 @@ pub const Surface = struct {
     /// The widget this surface belongs to
     widget: Widget,
 
-    /// Contents of this surface
-    buffer: []vaxis.Cell, // len == width * height
+    /// Contents of this surface. len == width * height
+    buffer: []vaxis.Cell,
 
     children: []SubSurface,
 
