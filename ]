@@ -228,7 +228,7 @@ const MouseHandler = struct {
         }
 
         // If no one handled the mouse, we assume it exited
-        return self.mouseExit(app);
+        try self.mouseExit(app);
     }
 
     fn mouseExit(self: *MouseHandler, app: *App) Allocator.Error!void {

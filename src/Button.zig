@@ -11,13 +11,15 @@ const Text = @import("Text.zig");
 const Button = @This();
 
 label: []const u8,
-on_click: *const fn (?*anyopaque) void,
+on_click: *const fn (?*anyopaque) ?vtk.Command,
 userdata: ?*anyopaque = null,
 style: vaxis.Style = .{ .reverse = true },
 hover_style: vaxis.Style = .{ .fg = .{ .index = 3 }, .reverse = true },
 mouse_down_style: vaxis.Style = .{ .fg = .{ .index = 4 }, .reverse = true },
 mouse_down: bool = false,
-mouse: ?vaxis.Mouse = null,
+has_mouse: bool = false,
+
+cmds: [2]vtk.Command = [_]vtk.Command{ .consume_event, .consume_event },
 
 pub fn init(
     label: []const u8,
@@ -47,14 +49,28 @@ fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
 pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
     switch (event) {
         .mouse => |mouse| {
-            if (self.mouse_down and mouse.type != .press) {
-                self.on_click(self.userdata);
-                return .consume_event;
+            if (self.mouse_down and mouse.type == .release) {
+                self.mouse_down = false;
+                if (self.on_click(self.userdata)) |cmd| {
+                    self.cmds[0] = cmd;
+                    return .{ .batch = &self.cmds };
+                }
             }
             if (mouse.type == .press and mouse.button == .left) {
                 self.mouse_down = true;
                 return .consume_event;
             }
+            if (!self.has_mouse) {
+                self.has_mouse = true;
+
+                self.cmds[0] = .{ .set_mouse_shape = .pointer };
+                return .{ .batch = &self.cmds };
+            }
+            return .consume_event;
+        },
+        .mouse_leave => {
+            self.has_mouse = false;
+            return .{ .set_mouse_shape = .default };
         },
         else => {},
     }

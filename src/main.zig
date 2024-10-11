@@ -39,6 +39,7 @@ pub const Event = union(enum) {
     app: AppEvent, // A custom event from the app
     tick, // An event from a Tick command
     init, // sent when the application starts
+    mouse_leave, // The mouse has left the widget
 };
 
 pub const Tick = struct {
@@ -67,6 +68,10 @@ pub const Command = union(enum) {
     batch: []const Command,
     /// Tells the event loop to redraw the UI
     redraw,
+    /// Quit the application
+    quit,
+    /// Change the mouse shape. This also has an implicit redraw
+    set_mouse_shape: vaxis.Mouse.Shape,
 };
 
 /// Returns true if the Command contains a .consume_event event
@@ -84,6 +89,8 @@ pub fn eventConsumed(maybe_cmd: ?Command) bool {
         // The rest are false
         .tick,
         .redraw,
+        .quit,
+        .set_mouse_shape,
         => return false,
     }
 }
