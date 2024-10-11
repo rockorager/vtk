@@ -17,7 +17,6 @@ quit_key: vaxis.Key = .{ .codepoint = 'c', .mods = .{ .ctrl = true } },
 allocator: Allocator,
 tty: vaxis.Tty,
 vx: vaxis.Vaxis,
-event_loop: EventLoop,
 timers: std.ArrayList(vtk.Tick),
 redraw: bool = true,
 quit: bool = false,
@@ -30,41 +29,42 @@ pub const Options = struct {
 /// Create an application. We require stable pointers to do the set up, so this will create an App
 /// object on the heap. Call destroy when the app is complete to reset terminal state and release
 /// resources
-pub fn create(allocator: Allocator) !*App {
-    const app = try allocator.create(App);
-
-    app.* = .{
+pub fn init(allocator: Allocator) !App {
+    return .{
         .allocator = allocator,
         .tty = try vaxis.Tty.init(),
         .vx = try vaxis.init(allocator, .{ .system_clipboard_allocator = allocator }),
         .timers = std.ArrayList(vtk.Tick).init(allocator),
-
-        // We init this after we have our stable pointers
-        .event_loop = undefined,
     };
-
-    app.event_loop = .{ .tty = &app.tty, .vaxis = &app.vx };
-    try app.event_loop.init();
-    app.event_loop.postEvent(.init);
-    try app.event_loop.start();
-    return app;
 }
 
-pub fn destroy(self: *App) void {
-    self.event_loop.stop();
+pub fn deinit(self: *App) void {
     self.timers.deinit();
     self.vx.deinit(self.allocator, self.tty.anyWriter());
     self.tty.deinit();
-    self.allocator.destroy(self);
 }
 
 pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
-    // Initialize vaxis
-    const vx = &self.vx;
     const tty = &self.tty;
+    const vx = &self.vx;
+
+    var loop: EventLoop = .{ .tty = tty, .vaxis = vx };
+    try loop.start();
+    defer loop.stop();
+
+    // Send the init event
+    loop.postEvent(.init);
 
     try vx.enterAltScreen(tty.anyWriter());
     try vx.queryTerminal(tty.anyWriter(), 1 * std.time.ns_per_s);
+
+    {
+        // This part deserves a comment. loop.init installs a signal handler for the tty. We wait to
+        // init the loop until we know if we need this handler. We don't need it if the terminal
+        // supports in-band-resize
+        if (!vx.state.in_band_resize) try loop.init();
+    }
+
     // HACK: Ghostty is reporting incorrect pixel screen size
     vx.caps.sgr_pixels = false;
     try vx.setMouseMode(tty.anyWriter(), true);
@@ -86,7 +86,7 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
 
         try self.checkTimers();
 
-        while (self.event_loop.tryEvent()) |event| {
+        while (loop.tryEvent()) |event| {
             switch (event) {
                 .key_press => |key| {
                     if (key.matches(self.quit_key.codepoint, self.quit_key.mods)) {
