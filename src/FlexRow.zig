@@ -17,9 +17,9 @@ pub fn widget(self: *const FlexRow) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
     const self: *const FlexRow = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(ctx, event);
+    return self.handleEvent(event);
 }
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -27,10 +27,12 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn handleEvent(self: *const FlexRow, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+pub fn handleEvent(self: *const FlexRow, event: vtk.Event) ?vtk.Command {
+    // FIXME: collect resulting commands
     for (self.children) |child| {
-        try child.widget.handleEvent(ctx, event);
+        _ = child.widget.handleEvent(event);
     }
+    return null;
 }
 
 pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -95,4 +97,9 @@ pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
     }
     const size = .{ .width = second_pass_width, .height = max_height };
     return vtk.Surface.initWithChildren(ctx.arena, self.widget(), size, children.items);
+}
+
+test "FlexRow: validate widget interface" {
+    var flex: FlexRow = .{ .children = &.{} };
+    _ = flex.widget();
 }

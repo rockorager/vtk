@@ -9,6 +9,31 @@ const lorem_ipsum =
     \\Cras consequat sit amet erat vel fringilla. Nullam eu elementum orci. Vestibulum ut iaculis dolor. Nulla sit amet congue augue, in laoreet libero. Nulla sodales erat eget sollicitudin ultricies. Etiam in urna quis neque imperdiet bibendum. Nulla ac tortor tristique, luctus lorem et, vehicula dolor. 
 ;
 
+const Model = struct {
+    spinner: vtk.Spinner = .{},
+
+    pub fn widget(self: *Model) vtk.Widget {
+        return .{
+            .userdata = self,
+            .eventHandler = Model.typeErasedEventHandler,
+            .drawFn = Model.typeErasedDrawFn,
+        };
+    }
+
+    fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
+        const self: *Model = @ptrCast(@alignCast(ptr));
+        switch (event) {
+            .init => return self.spinner.start(),
+            else => return self.spinner.handleEvent(event),
+        }
+    }
+
+    fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) std.mem.Allocator.Error!vtk.Surface {
+        const self: *Model = @ptrCast(@alignCast(ptr));
+        return self.spinner.draw(ctx);
+    }
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
@@ -22,14 +47,9 @@ pub fn main() !void {
     const app = try vtk.App.create(allocator);
     defer app.destroy();
 
-    var button: vtk.Button = .{
-        .label = "hello world",
-        .on_click = onClick,
-    };
+    var model: Model = .{};
 
-    button.userdata = &button;
-
-    try app.run(button.widget(), .{});
+    try app.run(model.widget(), .{});
 }
 
 fn onClick(maybe_ptr: ?*anyopaque) void {

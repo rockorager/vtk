@@ -48,9 +48,9 @@ pub fn widget(self: *const Padding) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
     const self: *const Padding = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(ctx, event);
+    return self.handleEvent(event);
 }
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -58,8 +58,8 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn handleEvent(self: *const Padding, ctx: vtk.Context, event: vtk.Event) anyerror!void {
-    return self.child.handleEvent(ctx, event);
+pub fn handleEvent(self: *const Padding, event: vtk.Event) ?vtk.Command {
+    return self.child.handleEvent(event);
 }
 
 pub fn draw(self: *const Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -89,4 +89,9 @@ pub fn draw(self: *const Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
 
     // Create the padding surface
     return vtk.Surface.initWithChildren(ctx.arena, self.widget(), size, children);
+}
+
+test "Padding satisfies Widget interface" {
+    const padding: Padding = .{ .child = undefined, .padding = .{} };
+    _ = padding.widget();
 }

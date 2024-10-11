@@ -39,23 +39,26 @@ pub fn widget(self: *Button) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
     const self: *Button = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(ctx, event);
+    return self.handleEvent(event);
 }
 
-pub fn handleEvent(self: *Button, _: vtk.Context, event: vtk.Event) anyerror!void {
+pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
     switch (event) {
         .mouse => |mouse| {
             if (self.mouse_down and mouse.type != .press) {
                 self.on_click(self.userdata);
+                return .consume_event;
             }
             if (mouse.type == .press and mouse.button == .left) {
                 self.mouse_down = true;
+                return .consume_event;
             }
         },
         else => {},
     }
+    return null;
 }
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -86,4 +89,25 @@ pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
         .buffer = surf.buffer,
         .children = surf.children,
     };
+}
+
+test Button {
+    const Foo = struct {
+        count: u8,
+
+        fn onClick(ptr: ?*anyopaque) void {
+            const foo: *@This() = @ptrCast(@alignCast(ptr));
+            foo.count +|= 1;
+        }
+    };
+
+    var foo: Foo = .{ .count = 0 };
+
+    var button: Button = .{
+        .label = "Test Button",
+        .on_click = Foo.onClick,
+        .userdata = &foo,
+    };
+
+    _ = button.widget();
 }

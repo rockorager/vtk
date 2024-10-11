@@ -404,3 +404,8 @@ test "LineIterator: CRLF breaks with empty line" {
     const end = iter.next();
     try std.testing.expect(end == null);
 }
+
+test "Text satisfies widget interface" {
+    const text: Text = .{ .text = "test" };
+    _ = text.widget();
+}

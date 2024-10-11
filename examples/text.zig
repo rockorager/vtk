@@ -22,9 +22,6 @@ pub fn main() !void {
     const app = try vtk.App.create(allocator);
     defer app.destroy();
 
-    var spinner: vtk.Spinner = .{};
-    spinner.start(app.context());
-
     const root = (vtk.Center{
         .child = (vtk.Padding{
             .child = (vtk.Text{

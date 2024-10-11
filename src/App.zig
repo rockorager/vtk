@@ -4,21 +4,23 @@ const vtk = @import("main.zig");
 
 const assert = std.debug.assert;
 
+const Allocator = std.mem.Allocator;
+
 const Canvas = vtk.Canvas;
-const Context = vtk.Context;
-const EventLoop = vtk.EventLoop;
+const EventLoop = vaxis.Loop(vtk.Event);
 const Widget = vtk.Widget;
 
 const App = @This();
 
 quit_key: vaxis.Key = .{ .codepoint = 'c', .mods = .{ .ctrl = true } },
 
-allocator: std.mem.Allocator,
+allocator: Allocator,
 tty: vaxis.Tty,
 vx: vaxis.Vaxis,
 event_loop: EventLoop,
-should_quit: std.atomic.Value(bool),
-timers: std.ArrayList(vtk.Callback),
+timers: std.ArrayList(vtk.Tick),
+redraw: bool = true,
+quit: bool = false,
 
 /// Runtime options
 pub const Options = struct {
@@ -28,15 +30,14 @@ pub const Options = struct {
 /// Create an application. We require stable pointers to do the set up, so this will create an App
 /// object on the heap. Call destroy when the app is complete to reset terminal state and release
 /// resources
-pub fn create(allocator: std.mem.Allocator) !*App {
+pub fn create(allocator: Allocator) !*App {
     const app = try allocator.create(App);
 
     app.* = .{
         .allocator = allocator,
         .tty = try vaxis.Tty.init(),
         .vx = try vaxis.init(allocator, .{ .system_clipboard_allocator = allocator }),
-        .should_quit = std.atomic.Value(bool).init(false),
-        .timers = std.ArrayList(vtk.Callback).init(allocator),
+        .timers = std.ArrayList(vtk.Tick).init(allocator),
 
         // We init this after we have our stable pointers
         .event_loop = undefined,
@@ -44,6 +45,7 @@ pub fn create(allocator: std.mem.Allocator) !*App {
 
     app.event_loop = .{ .tty = &app.tty, .vaxis = &app.vx };
     try app.event_loop.init();
+    app.event_loop.postEvent(.init);
     try app.event_loop.start();
     return app;
 }
@@ -54,14 +56,6 @@ pub fn destroy(self: *App) void {
     self.vx.deinit(self.allocator, self.tty.anyWriter());
     self.tty.deinit();
     self.allocator.destroy(self);
-}
-
-pub fn context(self: *App) vtk.Context {
-    return .{
-        .loop = &self.event_loop,
-        .should_quit = &self.should_quit,
-        .timers = &self.timers,
-    };
 }
 
 pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
@@ -85,40 +79,35 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
 
     var buffered = tty.bufferedWriter();
 
-    const ctx = self.context();
-
     var mouse: ?vaxis.Mouse = null;
 
     while (true) {
         std.time.sleep(tick_ms * std.time.ns_per_ms);
 
-        self.checkTimers();
+        try self.checkTimers();
 
-        var should_draw = false;
         while (self.event_loop.tryEvent()) |event| {
             switch (event) {
                 .key_press => |key| {
                     if (key.matches(self.quit_key.codepoint, self.quit_key.mods)) {
-                        ctx.postEvent(.quit);
+                        self.quit = true;
                     }
                 },
                 .mouse => |m| mouse = m,
                 .winsize => |ws| {
                     try vx.resize(self.allocator, buffered.writer().any(), ws);
                     try buffered.flush();
+                    self.redraw = true;
                 },
-                .quit => self.should_quit.store(true, .unordered),
-                .abort_quit => self.should_quit.store(false, .unordered),
                 else => {},
             }
-            should_draw = true;
-            try widget.handleEvent(ctx, event);
+            const maybe_cmd = widget.handleEvent(event);
+            try self.handleCommand(maybe_cmd);
         }
 
-        if (!should_draw) continue;
-
-        if (self.should_quit.load(.unordered))
-            return;
+        if (self.quit) return;
+        if (!self.redraw) continue;
+        self.redraw = false;
 
         defer _ = arena.reset(.retain_capacity);
 
@@ -152,7 +141,10 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
                 var m_local = m;
                 m_local.col = item.local.col;
                 m_local.row = item.local.row;
-                try item.widget.handleEvent(ctx, .{ .mouse = m_local });
+                const maybe_cmd = item.widget.handleEvent(.{ .mouse = m_local });
+                if (vtk.eventConsumed(maybe_cmd)) {
+                    break;
+                }
             }
         }
         surface.render(win);
@@ -162,16 +154,43 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
     }
 }
 
-pub fn checkTimers(self: *App) void {
+fn addTick(self: *App, tick: vtk.Tick) Allocator.Error!void {
+    try self.timers.append(tick);
+    std.sort.insertion(vtk.Tick, self.timers.items, {}, vtk.Tick.lessThan);
+}
+
+fn handleCommand(self: *App, maybe_cmd: ?vtk.Command) Allocator.Error!void {
+    const cmd = maybe_cmd orelse return;
+    switch (cmd) {
+        .redraw => self.redraw = true,
+        .tick => |tick| try self.addTick(tick),
+        .consume_event => {}, // What do we do here?
+        .batch => |cmds| {
+            for (cmds) |c| {
+                try self.handleCommand(c);
+            }
+        },
+    }
+}
+
+fn checkTimers(self: *App) Allocator.Error!void {
     const now_ms = std.time.milliTimestamp();
-    const ctx = self.context();
+
+    var expired = try std.ArrayList(vtk.Tick).initCapacity(self.allocator, self.timers.items.len);
+    defer expired.deinit();
 
     // timers are always sorted descending
     var iter = std.mem.reverseIterator(self.timers.items);
-    while (iter.next()) |callback| {
-        if (now_ms < callback.deadline_ms)
+    while (iter.next()) |tick| {
+        if (now_ms < tick.deadline_ms)
             break;
-        callback.callback(callback.ptr, ctx);
-        _ = self.timers.pop();
+        // Preallocated capacity
+        expired.appendAssumeCapacity(tick);
+        self.timers.items.len -= 1;
+    }
+
+    for (expired.items) |tick| {
+        const maybe_cmd = tick.widget.handleEvent(.tick);
+        try self.handleCommand(maybe_cmd);
     }
 }

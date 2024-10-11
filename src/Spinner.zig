@@ -8,44 +8,26 @@ const Allocator = std.mem.Allocator;
 const Spinner = @This();
 
 const frames: []const []const u8 = &.{ "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
-const time_lapse: i64 = std.time.ms_per_s / 12; // 12 fps
+const time_lapse: u32 = std.time.ms_per_s / 12; // 12 fps
 
 count: std.atomic.Value(u16) = .{ .raw = 0 },
-mutex: std.Thread.Mutex = .{},
 style: vaxis.Style = .{},
+/// The frame index
 frame: u4 = 0,
+/// When we rearm the timer, we return a Tick and a redraw command. We statically allocate these up
+/// front so we don't need an allocator
+rearm: [2]vtk.Command = [_]vtk.Command{ .redraw, .redraw },
 
-pub fn start(self: *Spinner, ctx: vtk.Context) void {
+/// Start, or add one, to the spinner counter. Thread safe.
+pub fn start(self: *Spinner) ?vtk.Command {
     const count = self.count.fetchAdd(1, .monotonic);
     if (count == 0) {
-        const now = std.time.milliTimestamp();
-        ctx.scheduleCallback(.{
-            .deadline_ms = now + time_lapse,
-            .ptr = self,
-            .callback = callback,
-        });
+        return vtk.Tick.in(time_lapse, self.widget());
     }
+    return null;
 }
 
-fn callback(ptr: *anyopaque, ctx: vtk.Context) void {
-    const self: *Spinner = @ptrCast(@alignCast(ptr));
-    const count = self.count.load(.unordered);
-
-    if (count == 0) return;
-    // Update frame
-    self.frame += 1;
-    if (self.frame >= frames.len) self.frame = 0;
-
-    // Reschedule callback
-    const now = std.time.milliTimestamp();
-    ctx.scheduleCallback(.{
-        .deadline_ms = now + time_lapse,
-        .ptr = self,
-        .callback = callback,
-    });
-    ctx.postEvent(.redraw);
-}
-
+/// Reduce one from the spinner counter. The spinner will stop when it reaches 0. Thread safe
 pub fn stop(self: *Spinner) void {
     self.count.store(self.count.load(.unordered) -| 1, .unordered);
 }
@@ -53,17 +35,40 @@ pub fn stop(self: *Spinner) void {
 pub fn widget(self: *Spinner) vtk.Widget {
     return .{
         .userdata = self,
-        .eventHandler = vtk.noopEventHandler,
+        .eventHandler = typeErasedEventHandler,
         .drawFn = typeErasedDrawFn,
     };
 }
 
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
+    const self: *Spinner = @ptrCast(@alignCast(ptr));
+    return self.handleEvent(event);
+}
+
+pub fn handleEvent(self: *Spinner, event: vtk.Event) ?vtk.Command {
+    switch (event) {
+        .tick => {
+            const count = self.count.load(.unordered);
+
+            if (count == 0) return null;
+            // Update frame
+            self.frame += 1;
+            if (self.frame >= frames.len) self.frame = 0;
+
+            // Update rearm
+            self.rearm[0] = vtk.Tick.in(time_lapse, self.widget());
+            return .{ .batch = &self.rearm };
+        },
+        else => return null,
+    }
+}
+
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
-    const self: *const Spinner = @ptrCast(@alignCast(ptr));
+    const self: *Spinner = @ptrCast(@alignCast(ptr));
     return self.draw(ctx);
 }
 
-pub fn draw(self: *const Spinner, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+pub fn draw(self: *Spinner, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const size: vtk.Size = .{
         .width = @max(1, ctx.min.width),
         .height = @max(1, ctx.min.height),

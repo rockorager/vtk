@@ -26,5 +26,9 @@ pub fn destroyDrawContext(ctx: vtk.DrawContext) void {
 
 test {
     _ = @import("main.zig");
-    _ = @import("Text.zig");
+    // _ = @import("Button.zig");
+    // _ = @import("FlexColumn.zig");
+    // _ = @import("FlexRow.zig");
+    // _ = @import("Padding.zig");
+    // _ = @import("Text.zig");
 }

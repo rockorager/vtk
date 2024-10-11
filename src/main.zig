@@ -4,6 +4,7 @@ pub const vaxis = @import("vaxis");
 const grapheme = vaxis.grapheme;
 
 const assert = std.debug.assert;
+const testing = std.testing;
 
 const Allocator = std.mem.Allocator;
 
@@ -36,45 +37,56 @@ pub const Event = union(enum) {
     color_scheme: vaxis.Color.Scheme, // light / dark OS theme changes
     winsize: vaxis.Winsize, // the window size has changed. This event is always sent when the loop is started
     app: AppEvent, // A custom event from the app
-    redraw, // A generic redraw event
-    quit, // The application will exit when the event loop is drained
-    abort_quit, // Abort a quit event. This must be sent in response to a quit event to work
+    tick, // An event from a Tick command
+    init, // sent when the application starts
 };
 
-pub const EventLoop = vaxis.Loop(Event);
-
-pub const Callback = struct {
+pub const Tick = struct {
     deadline_ms: i64,
-    ptr: *anyopaque,
-    callback: *const fn (*anyopaque, ctx: Context) void,
+    widget: Widget,
 
-    pub fn lessThan(_: void, lhs: Callback, rhs: Callback) bool {
+    pub fn lessThan(_: void, lhs: Tick, rhs: Tick) bool {
         return lhs.deadline_ms > rhs.deadline_ms;
     }
-};
 
-/// Application context, passed to the `eventHandler` function
-pub const Context = struct {
-    loop: *EventLoop,
-    should_quit: *std.atomic.Value(bool),
-    timers: *std.ArrayList(Callback),
-
-    // Tell the application to quit. Thread safe.
-    pub fn quit(self: Context) void {
-        self.should_quit.store(true, .unordered);
-    }
-
-    pub fn scheduleCallback(self: Context, callback: Callback) void {
-        self.timers.append(callback) catch return;
-        std.sort.insertion(Callback, self.timers.items, {}, Callback.lessThan);
-    }
-
-    pub fn postEvent(self: Context, event: Event) void {
-        // Use try post to prevent a deadlock if this is called from the main thread
-        const success = self.loop.tryPostEvent(event);
-        if (!success) log.warn("event dropped: {}", .{event});
+    pub fn in(ms: u32, widget: Widget) Command {
+        const now = std.time.milliTimestamp();
+        return .{ .tick = .{
+            .deadline_ms = now + ms,
+            .widget = widget,
+        } };
     }
 };
+
+pub const Command = union(enum) {
+    /// Callback the event with a tick event at the specified deadlline
+    tick: Tick,
+    /// The event was handled, do not pass it on
+    consume_event,
+    /// The event produced multiple commands
+    batch: []const Command,
+    /// Tells the event loop to redraw the UI
+    redraw,
+};
+
+/// Returns true if the Command contains a .consume_event event
+pub fn eventConsumed(maybe_cmd: ?Command) bool {
+    const cmd = maybe_cmd orelse return false;
+    switch (cmd) {
+        .consume_event => return true,
+        .batch => |cmds| {
+            for (cmds) |c| {
+                if (eventConsumed(c)) return true;
+            }
+            return false;
+        },
+
+        // The rest are false
+        .tick,
+        .redraw,
+        => return false,
+    }
+}
 
 pub const DrawContext = struct {
     // Allocator backed by an arena. Widgets do not need to free their own resources, they will be
@@ -134,11 +146,11 @@ pub const Size = struct {
 /// The Widget interface
 pub const Widget = struct {
     userdata: *anyopaque,
-    eventHandler: *const fn (userdata: *anyopaque, ctx: Context, event: Event) anyerror!void,
+    eventHandler: *const fn (userdata: *anyopaque, event: Event) ?Command,
     drawFn: *const fn (userdata: *anyopaque, ctx: DrawContext) Allocator.Error!Surface,
 
-    pub fn handleEvent(self: Widget, ctx: Context, event: Event) anyerror!void {
-        return self.eventHandler(self.userdata, ctx, event);
+    pub fn handleEvent(self: Widget, event: Event) ?Command {
+        return self.eventHandler(self.userdata, event);
     }
 
     pub fn draw(self: Widget, ctx: DrawContext) Allocator.Error!Surface {
@@ -247,6 +259,7 @@ pub const Surface = struct {
         }
     }
 
+    /// Copies all cells from Surface to Window
     pub fn render(self: Surface, win: vaxis.Window) void {
         // render self first
         for (0..self.size.height) |row| {
@@ -270,6 +283,14 @@ pub const Surface = struct {
             child.surface.render(child_win);
         }
     }
+
+    /// Returns true if the surface satisfies a set of constraints
+    pub fn satisfiesConstraints(self: Surface, min: Size, max: Size) bool {
+        return self.size.width < min.width and
+            self.size.width > max.width and
+            self.size.height < min.height and
+            self.size.height > max.height;
+    }
 };
 
 pub const SubSurface = struct {
@@ -286,13 +307,40 @@ pub const SubSurface = struct {
 
     /// Returns true if this SubSurface contains Point. Point must be in parent local units
     pub fn containsPoint(self: SubSurface, point: Point) bool {
-        if (point.col < self.origin.col or
-            point.row < self.origin.row or
-            point.col >= (self.origin.col + self.surface.size.width) or
-            point.row >= (self.origin.row + self.surface.size.height)) return false;
-        return true;
+        return point.col >= self.origin.col and
+            point.row >= self.origin.row and
+            point.col < (self.origin.col + self.surface.size.width) and
+            point.row < (self.origin.row + self.surface.size.height);
     }
 };
 
 /// A noop event handler for widgets which don't require any event handling
-pub fn noopEventHandler(_: *anyopaque, _: Context, _: Event) anyerror!void {}
+pub fn noopEventHandler(_: *anyopaque, _: Event) ?Command {
+    return null;
+}
+
+test {
+    std.testing.refAllDecls(@This());
+}
+
+test "SubSurface: containsPoint" {
+    const surf: SubSurface = .{
+        .origin = .{ .row = 2, .col = 2 },
+        .surface = .{
+            .size = .{ .width = 10, .height = 10 },
+            .widget = undefined,
+            .children = &.{},
+            .buffer = &.{},
+        },
+        .z_index = 0,
+    };
+
+    try testing.expect(surf.containsPoint(.{ .row = 2, .col = 2 }));
+    try testing.expect(surf.containsPoint(.{ .row = 3, .col = 3 }));
+    try testing.expect(surf.containsPoint(.{ .row = 11, .col = 11 }));
+
+    try testing.expect(!surf.containsPoint(.{ .row = 1, .col = 1 }));
+    try testing.expect(!surf.containsPoint(.{ .row = 12, .col = 12 }));
+    try testing.expect(!surf.containsPoint(.{ .row = 2, .col = 12 }));
+    try testing.expect(!surf.containsPoint(.{ .row = 12, .col = 2 }));
+}

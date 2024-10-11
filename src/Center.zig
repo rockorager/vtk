@@ -17,9 +17,9 @@ pub fn widget(self: *const Center) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, ctx: vtk.Context, event: vtk.Event) anyerror!void {
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
     const self: *const Center = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(ctx, event);
+    return self.handleEvent(event);
 }
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -27,8 +27,8 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn handleEvent(self: *const Center, ctx: vtk.Context, event: vtk.Event) anyerror!void {
-    return self.child.handleEvent(ctx, event);
+pub fn handleEvent(self: *const Center, event: vtk.Event) ?vtk.Command {
+    return self.child.handleEvent(event);
 }
 
 pub fn draw(self: *const Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
