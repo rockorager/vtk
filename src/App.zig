@@ -79,7 +79,7 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
 
     var buffered = tty.bufferedWriter();
 
-    var mouse_handler: MouseHandler = .{};
+    var mouse_handler = MouseHandler.init(widget);
 
     while (true) {
         std.time.sleep(tick_ms * std.time.ns_per_ms);
@@ -135,7 +135,7 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         try buffered.flush();
 
         // Store the last frame
-        mouse_handler.maybe_last_frame = surface;
+        mouse_handler.last_frame = surface;
     }
 }
 
@@ -186,11 +186,23 @@ fn checkTimers(self: *App) Allocator.Error!void {
 }
 
 const MouseHandler = struct {
-    maybe_last_frame: ?vtk.Surface = null,
+    last_frame: vtk.Surface,
     maybe_last_handler: ?vtk.Widget = null,
 
+    fn init(root: Widget) MouseHandler {
+        return .{
+            .last_frame = .{
+                .size = .{ .width = 0, .height = 0 },
+                .widget = root,
+                .buffer = &.{},
+                .children = &.{},
+            },
+            .maybe_last_handler = null,
+        };
+    }
+
     fn handleMouse(self: *MouseHandler, app: *App, mouse: vaxis.Mouse) Allocator.Error!void {
-        const last_frame = self.maybe_last_frame orelse return;
+        const last_frame = self.last_frame;
 
         // For mouse events we store the last frame and use that for hit testing
         var hits = std.ArrayList(vtk.HitResult).init(app.allocator);
