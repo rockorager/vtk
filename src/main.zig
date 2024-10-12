@@ -193,6 +193,11 @@ pub const Surface = struct {
     /// The widget this surface belongs to
     widget: Widget,
 
+    /// If this widget / Surface is focusable
+    focusable: bool = false,
+    /// If this widget can handle mouse events
+    handles_mouse: bool = false,
+
     /// Contents of this surface. len == width * height
     buffer: []vaxis.Cell,
 
@@ -255,7 +260,8 @@ pub const Surface = struct {
     /// always be translated to local Surface coordinates. Asserts that this Surface does contain Point
     pub fn hitTest(self: Surface, list: *std.ArrayList(HitResult), point: Point) Allocator.Error!void {
         assert(point.col < self.size.width and point.row < self.size.height);
-        try list.append(.{ .local = point, .widget = self.widget });
+        if (self.handles_mouse)
+            try list.append(.{ .local = point, .widget = self.widget });
         for (self.children) |child| {
             if (!child.containsPoint(point)) continue;
             const child_point: Point = .{

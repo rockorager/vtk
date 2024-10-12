@@ -34,9 +34,7 @@ const Model = struct {
         );
 
         const center: vtk.Center = .{ .child = self.button.widget() };
-        var surface = try center.draw(ctx.withContstraints(ctx.min, .{ .width = 30, .height = 4 }));
-        surface.widget = self.widget();
-        return surface;
+        return center.draw(ctx.withContstraints(ctx.min, .{ .width = 30, .height = 4 }));
     }
 
     fn onClick(maybe_ptr: ?*anyopaque) ?vtk.Command {

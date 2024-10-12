@@ -118,6 +118,10 @@ pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
         .widget = self.widget(),
         .buffer = surf.buffer,
         .children = surf.children,
+
+        // Input props
+        .handles_mouse = true,
+        .focusable = true,
     };
 }
 
