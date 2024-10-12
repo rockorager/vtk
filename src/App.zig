@@ -80,6 +80,9 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
     var buffered = tty.bufferedWriter();
 
     var mouse_handler = MouseHandler.init(widget);
+    var focus_handler = FocusHandler.init(self.allocator, widget);
+    focus_handler.intrusiveInit();
+    defer focus_handler.deinit();
 
     while (true) {
         std.time.sleep(tick_ms * std.time.ns_per_ms);
@@ -91,6 +94,10 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
                 .key_press => |key| {
                     if (key.matches(self.quit_key.codepoint, self.quit_key.mods)) {
                         self.quit = true;
+                    }
+                    if (key.matches(vaxis.Key.tab, .{})) {
+                        const cmd = focus_handler.focusNext();
+                        try self.handleCommand(cmd);
                     }
                 },
                 .focus_out => try mouse_handler.mouseExit(self),
@@ -136,6 +143,7 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
 
         // Store the last frame
         mouse_handler.last_frame = surface;
+        try focus_handler.update(surface);
     }
 }
 
@@ -230,7 +238,7 @@ const MouseHandler = struct {
             if (!vtk.eventConsumed(maybe_cmd)) continue;
 
             if (self.maybe_last_handler) |last_mouse_handler| {
-                if (@intFromPtr(last_mouse_handler.userdata) != @intFromPtr(item.widget.userdata)) {
+                if (!last_mouse_handler.eql(item.widget)) {
                     const cmd = last_mouse_handler.handleEvent(.mouse_leave);
                     try app.handleCommand(cmd);
                 }
@@ -249,5 +257,156 @@ const MouseHandler = struct {
             try app.handleCommand(cmd);
             self.maybe_last_handler = null;
         }
+    }
+};
+
+/// Maintains a single list of focusable widgets. These widgets must be long lived. Could expand to
+/// a focus tree at some point if it becomes necessary
+const FocusHandler = struct {
+    arena: std.heap.ArenaAllocator,
+
+    root: Node,
+    focused: *Node,
+
+    cmds: [2]vtk.Command,
+
+    const Node = struct {
+        widget: Widget,
+        parent: ?*Node,
+        children: []*Node,
+
+        fn nextSibling(self: Node) ?*Node {
+            const parent = self.parent orelse return null;
+            const idx = for (0..parent.children.len) |i| {
+                const node = parent.children[i];
+                if (self.widget.eql(node.widget))
+                    break i;
+            } else unreachable;
+
+            // Return null if last child
+            if (idx == parent.children.len - 1)
+                return null
+            else
+                return parent.children[idx + 1];
+        }
+
+        fn firstChild(self: Node) ?*Node {
+            if (self.children.len > 0)
+                return self.children[0]
+            else
+                return null;
+        }
+
+        /// returns the next logical node in the tree
+        fn nextNode(self: *Node) *Node {
+            // If we have a sibling, we return it's first descendant line
+            if (self.nextSibling()) |sibling| {
+                var node = sibling;
+                while (node.firstChild()) |child| {
+                    node = child;
+                }
+                return node;
+            }
+
+            // If we don't have a sibling, we return our parent
+            if (self.parent) |parent| return parent;
+
+            // If we don't have a parent, we are the root and we return or first descendant
+            var node = self;
+            while (node.firstChild()) |child| {
+                node = child;
+            }
+            return node;
+        }
+    };
+
+    fn init(allocator: Allocator, root: Widget) FocusHandler {
+        const node: Node = .{
+            .widget = root,
+            .parent = null,
+            .children = &.{},
+        };
+        return .{
+            .root = node,
+            .focused = undefined,
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .cmds = [_]vtk.Command{ .redraw, .redraw },
+        };
+    }
+
+    fn intrusiveInit(self: *FocusHandler) void {
+        self.focused = &self.root;
+    }
+
+    fn deinit(self: *FocusHandler) void {
+        self.arena.deinit();
+    }
+
+    /// Update the focus list
+    fn update(self: *FocusHandler, root: vtk.Surface) Allocator.Error!void {
+        _ = self.arena.reset(.retain_capacity);
+
+        var list = std.ArrayList(*Node).init(self.arena.allocator());
+        for (root.children) |child| {
+            try self.findFocusableChildren(&self.root, &list, child.surface);
+        }
+        self.root = .{
+            .widget = root.widget,
+            .children = list.items,
+            .parent = null,
+        };
+    }
+
+    /// Walks the surface tree, adding all focusable nodes to list
+    fn findFocusableChildren(
+        self: *FocusHandler,
+        parent: *Node,
+        list: *std.ArrayList(*Node),
+        surface: vtk.Surface,
+    ) Allocator.Error!void {
+        if (surface.focusable) {
+            // We are a focusable child of parent. Create a new node, and find our own focusable
+            // children
+            const node = try self.arena.allocator().create(Node);
+            var child_list = std.ArrayList(*Node).init(self.arena.allocator());
+            for (surface.children) |child| {
+                try self.findFocusableChildren(node, &child_list, child.surface);
+            }
+            node.* = .{
+                .widget = surface.widget,
+                .parent = parent,
+                .children = child_list.items,
+            };
+            try list.append(node);
+        } else {
+            for (surface.children) |child| {
+                try self.findFocusableChildren(parent, list, child.surface);
+            }
+        }
+    }
+
+    /// Focuses the next focusable widget
+    fn focusNext(self: *FocusHandler) ?vtk.Command {
+        const last_focus = self.focused;
+        self.focused = self.focused.nextNode();
+
+        if (self.focused.widget.eql(last_focus.widget)) return null;
+
+        const maybe_cmd1 = last_focus.widget.handleEvent(.focus_out);
+        if (maybe_cmd1) |cmd1|
+            self.cmds[0] = cmd1;
+
+        const maybe_cmd2 = self.focused.widget.handleEvent(.focus_in);
+        if (maybe_cmd2) |cmd2|
+            self.cmds[1] = cmd2;
+
+        if (maybe_cmd1 != null and maybe_cmd2 != null)
+            return .{ .batch = &self.cmds }
+        else if (maybe_cmd1 == null and maybe_cmd2 != null)
+            return maybe_cmd2.?
+        else if (maybe_cmd1 != null and maybe_cmd2 == null)
+            return maybe_cmd1.?
+        else
+            return null;
     }
 };

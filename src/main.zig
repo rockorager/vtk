@@ -163,6 +163,13 @@ pub const Widget = struct {
     pub fn draw(self: Widget, ctx: DrawContext) Allocator.Error!Surface {
         return self.drawFn(self.userdata, ctx);
     }
+
+    /// Returns true if the Widgets point to the same widget instance
+    pub fn eql(self: Widget, other: Widget) bool {
+        return @intFromPtr(self.userdata) == @intFromPtr(other.userdata) and
+            @intFromPtr(self.eventHandler) == @intFromPtr(other.eventHandler) and
+            @intFromPtr(self.drawFn) == @intFromPtr(other.drawFn);
+    }
 };
 
 pub const FlexItem = struct {

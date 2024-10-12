@@ -21,6 +21,7 @@ const Model = struct {
                 return self.button.handleEvent(event);
             },
             .mouse => return null,
+            .focus_in => return null,
             else => return self.button.handleEvent(event),
         }
     }
@@ -34,7 +35,10 @@ const Model = struct {
         );
 
         const center: vtk.Center = .{ .child = self.button.widget() };
-        return center.draw(ctx.withContstraints(ctx.min, .{ .width = 30, .height = 4 }));
+        var surface = try center.draw(ctx.withContstraints(ctx.min, .{ .width = 30, .height = 4 }));
+        surface.widget = self.widget();
+
+        return surface;
     }
 
     fn onClick(maybe_ptr: ?*anyopaque) ?vtk.Command {

@@ -16,13 +16,17 @@ onClick: *const fn (?*anyopaque) ?vtk.Command,
 userdata: ?*anyopaque = null,
 
 // Styles
-style: vaxis.Style = .{ .reverse = true },
-hover_style: vaxis.Style = .{ .fg = .{ .index = 3 }, .reverse = true },
-mouse_down_style: vaxis.Style = .{ .fg = .{ .index = 4 }, .reverse = true },
+style: struct {
+    default: vaxis.Style = .{ .reverse = true },
+    mouse_down: vaxis.Style = .{ .fg = .{ .index = 4 }, .reverse = true },
+    hover: vaxis.Style = .{ .fg = .{ .index = 3 }, .reverse = true },
+    focus: vaxis.Style = .{ .fg = .{ .index = 5 }, .reverse = true },
+} = .{},
 
 // State
 mouse_down: bool = false,
 has_mouse: bool = false,
+focused: bool = false,
 
 // Preallocated batch command
 cmds: [2]vtk.Command = [_]vtk.Command{ .consume_event, .consume_event },
@@ -79,6 +83,14 @@ pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
             self.has_mouse = false;
             return .{ .set_mouse_shape = .default };
         },
+        .focus_in => {
+            self.focused = true;
+            return .redraw;
+        },
+        .focus_out => {
+            self.focused = false;
+            return .redraw;
+        },
         else => {},
     }
     return null;
@@ -91,11 +103,13 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 
 pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const style: vaxis.Style = if (self.mouse_down)
-        self.mouse_down_style
+        self.style.mouse_down
     else if (self.has_mouse)
-        self.hover_style
+        self.style.hover
+    else if (self.focused)
+        self.style.focus
     else
-        self.style;
+        self.style.default;
 
     const text: Text = .{
         .style = style,
