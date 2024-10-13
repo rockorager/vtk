@@ -19,8 +19,8 @@ pub fn main() !void {
     }
     const allocator = gpa.allocator();
 
-    const app = try vtk.App.create(allocator);
-    defer app.destroy();
+    var app = try vtk.App.init(allocator);
+    defer app.deinit();
 
     const root = (vtk.Center{
         .child = (vtk.Padding{
