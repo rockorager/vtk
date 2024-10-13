@@ -38,7 +38,12 @@ pub fn draw(self: *const SizedBox, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
         .width = @max(ctx.min.width, self.size.width),
         .height = @max(ctx.min.height, self.size.height),
     };
-    return self.child.draw(ctx.withContstraints(ctx.min, max));
+    const min: vtk.Size = .{
+        .width = @min(ctx.max.width, self.size.width),
+        .height = @min(ctx.max.height, self.size.height),
+    };
+    std.debug.assert(max.width >= min.width and max.height >= min.height);
+    return self.child.draw(ctx.withContstraints(min, max));
 }
 
 test "SizedBox satisfies Widget interface" {
