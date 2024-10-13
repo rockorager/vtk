@@ -32,7 +32,8 @@ pub fn handleEvent(self: *const Center, event: vtk.Event) ?vtk.Command {
 }
 
 pub fn draw(self: *const Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
-    const child = try self.child.draw(ctx);
+    const child_ctx = ctx.withContstraints(.{ .width = 0, .height = 0 }, ctx.max);
+    const child = try self.child.draw(child_ctx);
 
     const x = (ctx.max.width - child.size.width) / 2;
     const y = (ctx.max.height - child.size.height) / 2;
