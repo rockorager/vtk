@@ -3,6 +3,7 @@ const vtk = @import("vtk");
 
 const Model = struct {
     button: vtk.Button,
+    text_field: vtk.TextField,
     count: usize,
 
     pub fn widget(self: *Model) vtk.Widget {
@@ -33,8 +34,16 @@ const Model = struct {
             .{self.count},
         );
 
-        const center: vtk.Center = .{ .child = self.button.widget() };
-        var surface = try center.draw(ctx.withContstraints(ctx.min, .{ .width = 30, .height = 4 }));
+        const flex: vtk.FlexRow = .{ .children = &.{ .{
+            .widget = self.button.widget(),
+        }, .{
+            .widget = self.text_field.widget(),
+        } } };
+
+        // const center: vtk.Center = .{ .child = self.button.widget() };
+        // var surface = try center.draw(ctx.withContstraints(ctx.min, .{ .width = 30, .height = 4 }));
+        // surface.widget = self.widget();
+        var surface = try flex.draw(ctx);
         surface.widget = self.widget();
 
         return surface;
@@ -66,7 +75,9 @@ pub fn main() !void {
             .onClick = Model.onClick,
             .userdata = model,
         },
+        .text_field = vtk.TextField.init(allocator, &app.vx.unicode),
     };
+    defer model.text_field.deinit();
 
     try app.run(model.widget(), .{});
 }

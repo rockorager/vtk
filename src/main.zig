@@ -14,8 +14,9 @@ pub const Center = @import("Center.zig");
 pub const FlexColumn = @import("FlexColumn.zig");
 pub const FlexRow = @import("FlexRow.zig");
 pub const Padding = @import("Padding.zig");
-pub const Text = @import("Text.zig");
 pub const Spinner = @import("Spinner.zig");
+pub const Text = @import("Text.zig");
+pub const TextField = @import("TextField.zig");
 
 const log = std.log.scoped(.vtk);
 
@@ -194,6 +195,14 @@ pub const HitResult = struct {
     widget: Widget,
 };
 
+pub const CursorState = struct {
+    /// Local coordinates
+    row: u16,
+    /// Local coordinates
+    col: u16,
+    shape: vaxis.Cell.CursorShape = .default,
+};
+
 pub const Surface = struct {
     /// Size of this surface
     size: Size,
@@ -204,6 +213,9 @@ pub const Surface = struct {
     focusable: bool = false,
     /// If this widget can handle mouse events
     handles_mouse: bool = false,
+
+    /// Cursor state
+    cursor: ?CursorState = null,
 
     /// Contents of this surface. len == width * height
     buffer: []vaxis.Cell,
@@ -280,12 +292,19 @@ pub const Surface = struct {
     }
 
     /// Copies all cells from Surface to Window
-    pub fn render(self: Surface, win: vaxis.Window) void {
+    pub fn render(self: Surface, win: vaxis.Window, focused: Widget) void {
         // render self first
         for (0..self.size.height) |row| {
             for (0..self.size.width) |col| {
                 const cell = self.readCell(col, row);
                 win.writeCell(col, row, cell);
+            }
+        }
+
+        if (self.cursor) |cursor| {
+            if (self.widget.eql(focused)) {
+                win.showCursor(cursor.col, cursor.row);
+                win.setCursorShape(cursor.shape);
             }
         }
 
@@ -300,7 +319,7 @@ pub const Surface = struct {
                 .width = .{ .limit = child.surface.size.width },
                 .height = .{ .limit = child.surface.size.height },
             });
-            child.surface.render(child_win);
+            child.surface.render(child_win, focused);
         }
     }
 

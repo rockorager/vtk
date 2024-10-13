@@ -140,9 +140,11 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         };
         const win = vx.window();
         win.clear();
+        win.hideCursor();
+        win.setCursorShape(.default);
         const surface = try widget.draw(draw_context);
 
-        surface.render(win);
+        surface.render(win, focus_handler.focused.widget);
         try vx.render(buffered.writer().any());
         try buffered.flush();
 
@@ -265,8 +267,8 @@ const MouseHandler = struct {
     }
 };
 
-/// Maintains a single list of focusable widgets. These widgets must be long lived. Could expand to
-/// a focus tree at some point if it becomes necessary
+/// Maintains a tree of focusable nodes. Delivers events to the currently focused node, walking up
+/// the tree until the event is handled
 const FocusHandler = struct {
     arena: std.heap.ArenaAllocator,
 
