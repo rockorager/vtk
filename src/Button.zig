@@ -81,6 +81,7 @@ pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
         },
         .mouse_leave => {
             self.has_mouse = false;
+            self.mouse_down = false;
             return .{ .set_mouse_shape = .default };
         },
         .focus_in => {
