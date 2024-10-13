@@ -35,14 +35,14 @@ const Model = struct {
         );
 
         const flex: vtk.FlexRow = .{ .children = &.{ .{
-            .widget = self.button.widget(),
+            .widget = (vtk.SizedBox{
+                .child = self.button.widget(),
+                .size = .{ .width = 24, .height = 4 },
+            }).widget(),
         }, .{
             .widget = self.text_field.widget(),
         } } };
 
-        // const center: vtk.Center = .{ .child = self.button.widget() };
-        // var surface = try center.draw(ctx.withContstraints(ctx.min, .{ .width = 30, .height = 4 }));
-        // surface.widget = self.widget();
         var surface = try flex.draw(ctx);
         surface.widget = self.widget();
 
