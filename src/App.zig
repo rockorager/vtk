@@ -92,12 +92,17 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         while (loop.tryEvent()) |event| {
             switch (event) {
                 .key_press => |key| {
-                    if (key.matches(self.quit_key.codepoint, self.quit_key.mods)) {
-                        self.quit = true;
-                    }
-                    if (key.matches(vaxis.Key.tab, .{})) {
-                        const cmd = focus_handler.focusNext();
-                        try self.handleCommand(cmd);
+                    const maybe_cmd = focus_handler.handleEvent(event);
+                    if (vtk.eventConsumed(maybe_cmd)) {
+                        try self.handleCommand(maybe_cmd);
+                    } else {
+                        if (key.matches(self.quit_key.codepoint, self.quit_key.mods)) {
+                            self.quit = true;
+                        }
+                        if (key.matches(vaxis.Key.tab, .{})) {
+                            const cmd = focus_handler.focusNext();
+                            try self.handleCommand(cmd);
+                        }
                     }
                 },
                 .focus_out => try mouse_handler.mouseExit(self),
@@ -408,5 +413,15 @@ const FocusHandler = struct {
             return maybe_cmd1.?
         else
             return null;
+    }
+
+    fn handleEvent(self: *FocusHandler, event: vtk.Event) ?vtk.Command {
+        var maybe_node: ?*Node = self.focused;
+        while (maybe_node) |node| {
+            const cmd = node.widget.handleEvent(event);
+            if (vtk.eventConsumed(cmd)) return cmd;
+            maybe_node = node.parent;
+        }
+        return null;
     }
 };

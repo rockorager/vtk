@@ -58,13 +58,15 @@ fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
 
 pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
     switch (event) {
+        .key_press => |key| {
+            if (key.matches(vaxis.Key.enter, .{})) {
+                return self.doClick();
+            }
+        },
         .mouse => |mouse| {
             if (self.mouse_down and mouse.type == .release) {
                 self.mouse_down = false;
-                if (self.onClick(self.userdata)) |cmd| {
-                    self.cmds[0] = cmd;
-                    return .{ .batch = &self.cmds };
-                }
+                return self.doClick();
             }
             if (mouse.type == .press and mouse.button == .left) {
                 self.mouse_down = true;
@@ -138,6 +140,14 @@ pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
         .handles_mouse = true,
         .focusable = true,
     };
+}
+
+fn doClick(self: *Button) ?vtk.Command {
+    if (self.onClick(self.userdata)) |cmd| {
+        self.cmds[0] = cmd;
+        return .{ .batch = &self.cmds };
+    }
+    return .consume_event;
 }
 
 test Button {

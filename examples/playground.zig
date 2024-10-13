@@ -13,16 +13,15 @@ const Model = struct {
         };
     }
 
-    fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
-        const self: *Model = @ptrCast(@alignCast(ptr));
+    fn typeErasedEventHandler(_: *anyopaque, event: vtk.Event) ?vtk.Command {
         switch (event) {
             .key_press => |key| {
                 if (key.matches('c', .{ .ctrl = true })) return .quit;
-                return self.button.handleEvent(event);
+                return null;
             },
             .mouse => return null,
             .focus_in => return null,
-            else => return self.button.handleEvent(event),
+            else => return null,
         }
     }
 
