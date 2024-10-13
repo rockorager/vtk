@@ -256,10 +256,18 @@ pub const SoftwrapIterator = struct {
 };
 
 test "SoftwrapIterator: LF breaks" {
-    const t = @import("test.zig");
-    const canvas = try t.createDrawContext(std.testing.allocator, 20, 10);
-    defer t.destroyDrawContext(canvas);
-    var iter = SoftwrapIterator.init("Hello, \n world", canvas);
+    const unicode = try vaxis.Unicode.init(std.testing.allocator);
+    defer unicode.deinit();
+    vtk.DrawContext.init(&unicode, .unicode);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const ctx: vtk.DrawContext = .{
+        .min = .{ .width = 0, .height = 0 },
+        .max = .{ .width = 20, .height = 10 },
+        .arena = arena.allocator(),
+    };
+    var iter = SoftwrapIterator.init("Hello, \n world", ctx);
     const first = iter.next();
     try std.testing.expect(first != null);
     try std.testing.expectEqualStrings("Hello,", first.?.bytes);
@@ -275,10 +283,18 @@ test "SoftwrapIterator: LF breaks" {
 }
 
 test "SoftwrapIterator: soft breaks that fit" {
-    const t = @import("test.zig");
-    const canvas = try t.createDrawContext(std.testing.allocator, 6, 10);
-    defer t.destroyDrawContext(canvas);
-    var iter = SoftwrapIterator.init("Hello, \nworld", canvas);
+    const unicode = try vaxis.Unicode.init(std.testing.allocator);
+    defer unicode.deinit();
+    vtk.DrawContext.init(&unicode, .unicode);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const ctx: vtk.DrawContext = .{
+        .min = .{ .width = 0, .height = 0 },
+        .max = .{ .width = 6, .height = 10 },
+        .arena = arena.allocator(),
+    };
+    var iter = SoftwrapIterator.init("Hello, \nworld", ctx);
     const first = iter.next();
     try std.testing.expect(first != null);
     try std.testing.expectEqualStrings("Hello,", first.?.bytes);
@@ -294,10 +310,18 @@ test "SoftwrapIterator: soft breaks that fit" {
 }
 
 test "SoftwrapIterator: soft breaks that are longer than width" {
-    const t = @import("test.zig");
-    const canvas = try t.createDrawContext(std.testing.allocator, 6, 10);
-    defer t.destroyDrawContext(canvas);
-    var iter = SoftwrapIterator.init("very-long-word \nworld", canvas);
+    const unicode = try vaxis.Unicode.init(std.testing.allocator);
+    defer unicode.deinit();
+    vtk.DrawContext.init(&unicode, .unicode);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const ctx: vtk.DrawContext = .{
+        .min = .{ .width = 0, .height = 0 },
+        .max = .{ .width = 6, .height = 10 },
+        .arena = arena.allocator(),
+    };
+    var iter = SoftwrapIterator.init("very-long-word \nworld", ctx);
     const first = iter.next();
     try std.testing.expect(first != null);
     try std.testing.expectEqualStrings("very-l", first.?.bytes);
@@ -323,10 +347,18 @@ test "SoftwrapIterator: soft breaks that are longer than width" {
 }
 
 test "SoftwrapIterator: soft breaks with leading spaces" {
-    const t = @import("test.zig");
-    const canvas = try t.createDrawContext(std.testing.allocator, 6, 10);
-    defer t.destroyDrawContext(canvas);
-    var iter = SoftwrapIterator.init("Hello,        \n world", canvas);
+    const unicode = try vaxis.Unicode.init(std.testing.allocator);
+    defer unicode.deinit();
+    vtk.DrawContext.init(&unicode, .unicode);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const ctx: vtk.DrawContext = .{
+        .min = .{ .width = 0, .height = 0 },
+        .max = .{ .width = 6, .height = 10 },
+        .arena = arena.allocator(),
+    };
+    var iter = SoftwrapIterator.init("Hello,        \n world", ctx);
     const first = iter.next();
     try std.testing.expect(first != null);
     try std.testing.expectEqualStrings("Hello,", first.?.bytes);

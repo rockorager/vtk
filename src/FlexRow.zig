@@ -45,11 +45,11 @@ pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
 
     var layout_arena = std.heap.ArenaAllocator.init(ctx.arena);
 
-    const layout_ctx = ctx.withContraintsAndAllocator(
-        .{ .width = 0, .height = 0 },
-        .{ .width = initial_width, .height = ctx.max.height },
-        layout_arena.allocator(),
-    );
+    const layout_ctx: vtk.DrawContext = .{
+        .min = .{ .width = 0, .height = 0 },
+        .max = .{ .width = initial_width, .height = ctx.max.height },
+        .arena = layout_arena.allocator(),
+    };
 
     var first_pass_width: u16 = 0;
     var total_flex: u16 = 0;

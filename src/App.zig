@@ -69,6 +69,9 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
     vx.caps.sgr_pixels = false;
     try vx.setMouseMode(tty.anyWriter(), true);
 
+    // Give DrawContext the unicode data
+    vtk.DrawContext.init(&vx.unicode, vx.screen.width_method);
+
     const framerate: u64 = if (opts.framerate > 0) opts.framerate else 60;
     // Calculate tick rate
     const tick_ms: u64 = @divFloor(std.time.ms_per_s, framerate);
@@ -135,8 +138,6 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
                 .width = @intCast(vx.screen.width),
                 .height = @intCast(vx.screen.height),
             },
-            .unicode = &vx.unicode,
-            .width_method = vx.screen.width_method,
         };
         const win = vx.window();
         win.clear();

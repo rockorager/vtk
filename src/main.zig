@@ -105,19 +105,26 @@ pub const DrawContext = struct {
     max: Size,
 
     // Unicode stuff
-    unicode: *const vaxis.Unicode,
-    width_method: vaxis.gwidth.Method,
+    var unicode: ?*const vaxis.Unicode = null;
+    var width_method: vaxis.gwidth.Method = .unicode;
 
-    pub fn stringWidth(self: DrawContext, str: []const u8) usize {
+    pub fn init(ucd: *const vaxis.Unicode, method: vaxis.gwidth.Method) void {
+        DrawContext.unicode = ucd;
+        DrawContext.width_method = method;
+    }
+
+    pub fn stringWidth(_: DrawContext, str: []const u8) usize {
+        assert(DrawContext.unicode != null); // DrawContext not initialized
         return vaxis.gwidth.gwidth(
             str,
-            self.width_method,
-            &self.unicode.width_data,
+            DrawContext.width_method,
+            &DrawContext.unicode.?.width_data,
         );
     }
 
-    pub fn graphemeIterator(self: DrawContext, str: []const u8) grapheme.Iterator {
-        return self.unicode.graphemeIterator(str);
+    pub fn graphemeIterator(_: DrawContext, str: []const u8) grapheme.Iterator {
+        assert(DrawContext.unicode != null); // DrawContext not initialized
+        return DrawContext.unicode.?.graphemeIterator(str);
     }
 
     pub fn withContstraints(self: DrawContext, min: Size, max: Size) DrawContext {
@@ -125,23 +132,6 @@ pub const DrawContext = struct {
             .arena = self.arena,
             .min = min,
             .max = max,
-            .unicode = self.unicode,
-            .width_method = self.width_method,
-        };
-    }
-
-    pub fn withContraintsAndAllocator(
-        self: DrawContext,
-        min: Size,
-        max: Size,
-        arena: Allocator,
-    ) DrawContext {
-        return .{
-            .arena = arena,
-            .min = min,
-            .max = max,
-            .unicode = self.unicode,
-            .width_method = self.width_method,
         };
     }
 };

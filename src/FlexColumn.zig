@@ -45,11 +45,11 @@ pub fn draw(self: *const FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 
     var layout_arena = std.heap.ArenaAllocator.init(ctx.arena);
 
-    const layout_ctx = ctx.withContraintsAndAllocator(
-        .{ .width = 0, .height = 0 },
-        .{ .width = ctx.max.height, .height = initial_height },
-        layout_arena.allocator(),
-    );
+    const layout_ctx: vtk.DrawContext = .{
+        .min = .{ .width = 0, .height = 0 },
+        .max = .{ .width = ctx.max.height, .height = initial_height },
+        .arena = layout_arena.allocator(),
+    };
 
     // Store the inherent size of each widget
     var first_pass_height: u16 = 0;

@@ -9,26 +9,20 @@ pub fn createDrawContext(
 ) !vtk.DrawContext {
     const unicode = try allocator.create(vaxis.Unicode);
     unicode.* = try vaxis.Unicode.init(allocator);
+    vtk.DrawContext.init(unicode, .unicode);
 
     return .{
         .arena = allocator,
         .min = .{ .width = 0, .height = 0 },
         .max = .{ .width = w, .height = h },
-        .unicode = unicode,
-        .width_method = .unicode,
     };
 }
 
 pub fn destroyDrawContext(ctx: vtk.DrawContext) void {
-    ctx.unicode.deinit();
-    ctx.arena.destroy(ctx.unicode);
+    vtk.DrawContext.unicode.?.deinit();
+    ctx.arena.destroy(ctx.unicode.?);
 }
 
 test {
     _ = @import("main.zig");
-    // _ = @import("Button.zig");
-    // _ = @import("FlexColumn.zig");
-    // _ = @import("FlexRow.zig");
-    // _ = @import("Padding.zig");
-    // _ = @import("Text.zig");
 }
