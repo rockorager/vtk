@@ -154,9 +154,10 @@ test Button {
     const Foo = struct {
         count: u8,
 
-        fn onClick(ptr: ?*anyopaque) void {
+        fn onClick(ptr: ?*anyopaque) ?vtk.Command {
             const foo: *@This() = @ptrCast(@alignCast(ptr));
             foo.count +|= 1;
+            return null;
         }
     };
 
@@ -164,7 +165,7 @@ test Button {
 
     var button: Button = .{
         .label = "Test Button",
-        .on_click = Foo.onClick,
+        .onClick = Foo.onClick,
         .userdata = &foo,
     };
 
