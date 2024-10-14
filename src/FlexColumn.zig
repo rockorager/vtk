@@ -12,27 +12,14 @@ children: []const vtk.FlexItem,
 pub fn widget(self: *const FlexColumn) vtk.Widget {
     return .{
         .userdata = @constCast(self),
-        .eventHandler = typeErasedEventHandler,
+        .eventHandler = vtk.noopEventHandler,
         .drawFn = typeErasedDrawFn,
     };
-}
-
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
-    const self: *const FlexColumn = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(event);
 }
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const self: *const FlexColumn = @ptrCast(@alignCast(ptr));
     return self.draw(ctx);
-}
-
-pub fn handleEvent(self: *const FlexColumn, event: vtk.Event) ?vtk.Command {
-    // FIXME: gather all commands
-    for (self.children) |child| {
-        _ = child.widget.handleEvent(event);
-    }
-    return null;
 }
 
 pub fn draw(self: *const FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
