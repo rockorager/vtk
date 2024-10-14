@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) void {
     example_step.dependOn(&example_run.step);
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/test.zig"),
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
