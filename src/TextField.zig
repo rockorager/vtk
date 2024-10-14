@@ -14,7 +14,6 @@ const Unicode = vaxis.Unicode;
 const TextField = @This();
 
 const ellipsis: Cell.Character = .{ .grapheme = "…", .width = 1 };
-const consume_and_redraw = [2]vtk.Command{ .consume_event, .redraw };
 
 // Index of our cursor
 buf: Buffer,
@@ -60,45 +59,45 @@ pub fn handleEvent(self: *TextField, event: vtk.Event) ?vtk.Command {
         .key_press => |key| {
             if (key.matches(Key.backspace, .{})) {
                 self.deleteBeforeCursor();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches(Key.delete, .{}) or key.matches('d', .{ .ctrl = true })) {
                 self.deleteAfterCursor();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches(Key.left, .{}) or key.matches('b', .{ .ctrl = true })) {
                 self.cursorLeft();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches(Key.right, .{}) or key.matches('f', .{ .ctrl = true })) {
                 self.cursorRight();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches('a', .{ .ctrl = true }) or key.matches(Key.home, .{})) {
                 self.buf.moveGapLeft(self.buf.firstHalf().len);
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches('e', .{ .ctrl = true }) or key.matches(Key.end, .{})) {
                 self.buf.moveGapRight(self.buf.secondHalf().len);
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches('k', .{ .ctrl = true })) {
                 self.deleteToEnd();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches('u', .{ .ctrl = true })) {
                 self.deleteToStart();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches('b', .{ .alt = true }) or key.matches(Key.left, .{ .alt = true })) {
                 self.moveBackwardWordwise();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches('f', .{ .alt = true }) or key.matches(Key.right, .{ .alt = true })) {
                 self.moveForwardWordwise();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches('w', .{ .ctrl = true }) or key.matches(Key.backspace, .{ .alt = true })) {
                 self.deleteWordBefore();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.matches('d', .{ .alt = true })) {
                 self.deleteWordAfter();
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             } else if (key.text) |text| {
                 self.insertSliceAtCursor(text) catch |err| {
                     std.log.err("Couldn't insert char: {}", .{err});
                 };
-                return .{ .batch = &consume_and_redraw };
+                return vtk.consumeAndRedraw();
             }
         },
         else => {},

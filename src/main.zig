@@ -29,6 +29,8 @@ pub const Text = @import("Text.zig");
 
 const log = std.log.scoped(.vtk);
 
+const consume_and_redraw = [2]Command{ .consume_event, .redraw };
+
 pub const AppEvent = struct {
     name: []const u8,
     data: ?*const anyopaque = null,
@@ -103,6 +105,11 @@ pub fn eventConsumed(maybe_cmd: ?Command) bool {
         .set_mouse_shape,
         => return false,
     }
+}
+
+/// Returns a batch command composed of a consume_event and a redraw command
+pub fn consumeAndRedraw() Command {
+    return .{ .batch = &consume_and_redraw };
 }
 
 pub const DrawContext = struct {

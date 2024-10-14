@@ -70,13 +70,14 @@ pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
             }
             if (mouse.type == .press and mouse.button == .left) {
                 self.mouse_down = true;
-                self.cmds[0] = .redraw;
-                return .{ .batch = &self.cmds };
+                return vtk.consumeAndRedraw();
             }
             if (!self.has_mouse) {
                 self.has_mouse = true;
 
+                // implicit redraw
                 self.cmds[0] = .{ .set_mouse_shape = .pointer };
+                self.cmds[1] = .consume_event;
                 return .{ .batch = &self.cmds };
             }
             return .consume_event;
@@ -84,6 +85,7 @@ pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
         .mouse_leave => {
             self.has_mouse = false;
             self.mouse_down = false;
+            // implicit redraw
             return .{ .set_mouse_shape = .default };
         },
         .focus_in => {
@@ -145,6 +147,7 @@ pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
 fn doClick(self: *Button) ?vtk.Command {
     if (self.onClick(self.userdata)) |cmd| {
         self.cmds[0] = cmd;
+        self.cmds[1] = vtk.consumeAndRedraw();
         return .{ .batch = &self.cmds };
     }
     return .consume_event;
