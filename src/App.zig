@@ -106,6 +106,10 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
                             const cmd = focus_handler.focusNext();
                             try self.handleCommand(cmd);
                         }
+                        if (key.matches(vaxis.Key.tab, .{ .shift = true })) {
+                            const cmd = focus_handler.focusPrev();
+                            try self.handleCommand(cmd);
+                        }
                     }
                 },
                 .focus_out => try mouse_handler.mouseExit(self),
@@ -298,6 +302,28 @@ const FocusHandler = struct {
                 return parent.children[idx + 1];
         }
 
+        fn prevSibling(self: Node) ?*Node {
+            const parent = self.parent orelse return null;
+            const idx = for (0..parent.children.len) |i| {
+                const node = parent.children[i];
+                if (self.widget.eql(node.widget))
+                    break i;
+            } else unreachable;
+
+            // Return null if first child
+            if (idx == 0)
+                return null
+            else
+                return parent.children[idx - 1];
+        }
+
+        fn lastChild(self: Node) ?*Node {
+            if (self.children.len > 0)
+                return self.children[self.children.len - 1]
+            else
+                return null;
+        }
+
         fn firstChild(self: Node) ?*Node {
             if (self.children.len > 0)
                 return self.children[0]
@@ -322,6 +348,36 @@ const FocusHandler = struct {
             // If we don't have a parent, we are the root and we return or first descendant
             var node = self;
             while (node.firstChild()) |child| {
+                node = child;
+            }
+            return node;
+        }
+
+        fn prevNode(self: *Node) *Node {
+            // If we have children, we return the last child descendant
+            if (self.children.len > 0) {
+                var node = self;
+                while (node.lastChild()) |child| {
+                    node = child;
+                }
+                return node;
+            }
+
+            // If we have siblings, we return the last descendant line of the sibling
+            if (self.prevSibling()) |sibling| {
+                var node = sibling;
+                while (node.lastChild()) |child| {
+                    node = child;
+                }
+                return node;
+            }
+
+            // If we don't have a sibling, we return our parent
+            if (self.parent) |parent| return parent;
+
+            // If we don't have a parent, we are the root and we return our last descendant
+            var node = self;
+            while (node.lastChild()) |child| {
                 node = child;
             }
             return node;
@@ -393,13 +449,11 @@ const FocusHandler = struct {
         }
     }
 
-    /// Focuses the next focusable widget
-    fn focusNext(self: *FocusHandler) ?vtk.Command {
+    fn focusNode(self: *FocusHandler, node: *Node) ?vtk.Command {
+        if (self.focused.widget.eql(node.widget)) return null;
+
         const last_focus = self.focused;
-        self.focused = self.focused.nextNode();
-
-        if (self.focused.widget.eql(last_focus.widget)) return null;
-
+        self.focused = node;
         const maybe_cmd1 = last_focus.widget.handleEvent(.focus_out);
         if (maybe_cmd1) |cmd1|
             self.cmds[0] = cmd1;
@@ -416,6 +470,16 @@ const FocusHandler = struct {
             return maybe_cmd1.?
         else
             return null;
+    }
+
+    /// Focuses the next focusable widget
+    fn focusNext(self: *FocusHandler) ?vtk.Command {
+        return self.focusNode(self.focused.nextNode());
+    }
+
+    /// Focuses the previous focusable widget
+    fn focusPrev(self: *FocusHandler) ?vtk.Command {
+        return self.focusNode(self.focused.prevNode());
     }
 
     fn handleEvent(self: *FocusHandler, event: vtk.Event) ?vtk.Command {
