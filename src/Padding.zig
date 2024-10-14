@@ -73,7 +73,7 @@ pub fn draw(self: *const Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
         .height = ctx.max.height -| (pad.top + pad.bottom),
     };
 
-    const child_surface = try self.child.draw(ctx.withContstraints(inner_min, inner_max));
+    const child_surface = try self.child.draw(ctx.withConstraints(inner_min, inner_max));
 
     const children = try ctx.arena.alloc(vtk.SubSurface, 1);
     children[0] = .{

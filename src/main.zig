@@ -143,7 +143,7 @@ pub const DrawContext = struct {
         return DrawContext.unicode.?.graphemeIterator(str);
     }
 
-    pub fn withContstraints(self: DrawContext, min: Size, max: Size) DrawContext {
+    pub fn withConstraints(self: DrawContext, min: Size, max: Size) DrawContext {
         return .{
             .arena = self.arena,
             .min = min,

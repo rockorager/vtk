@@ -68,7 +68,7 @@ pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
             inherent_width + (remaining_space * child.flex) / total_flex;
 
         // Create a context for the child
-        const child_ctx = ctx.withContstraints(
+        const child_ctx = ctx.withConstraints(
             .{ .width = child_width, .height = 0 },
             .{ .width = child_width, .height = ctx.max.height },
         );

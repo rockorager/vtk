@@ -69,7 +69,7 @@ pub fn draw(self: *const FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.S
             inherent_height + (remaining_space * child.flex) / total_flex;
 
         // Create a context for the child
-        const child_ctx = ctx.withContstraints(
+        const child_ctx = ctx.withConstraints(
             .{ .width = 0, .height = child_height },
             .{ .width = ctx.max.width, .height = child_height },
         );
