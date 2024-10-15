@@ -278,6 +278,8 @@ pub const Surface = struct {
             .widget = self.widget,
             .buffer = self.buffer[0 .. self.size.width * height],
             .children = self.children,
+            .focusable = self.focusable,
+            .handles_mouse = self.handles_mouse,
         };
     }
 
