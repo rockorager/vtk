@@ -39,7 +39,12 @@ pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface
         self.widget(),
         .{ .width = container_width, .height = ctx.max.height },
     );
-    const base: vaxis.Cell = .{ .style = self.style };
+    const base_style: vaxis.Style = .{
+        .fg = self.style.fg,
+        .bg = self.style.bg,
+        .reverse = self.style.reverse,
+    };
+    const base: vaxis.Cell = .{ .style = base_style };
     @memset(surface.buffer, base);
 
     var row: u16 = 0;
