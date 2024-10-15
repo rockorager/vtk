@@ -56,12 +56,12 @@ pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface
             var char_iter = ctx.graphemeIterator(line.bytes);
             while (char_iter.next()) |char| {
                 const grapheme = char.bytes(line.bytes);
-                const grapheme_width = ctx.stringWidth(grapheme);
+                const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
                 surface.writeCell(col, row, .{
                     .char = .{ .grapheme = grapheme, .width = grapheme_width },
                     .style = self.style,
                 });
-                col += @intCast(grapheme_width);
+                col += grapheme_width;
             }
         }
     } else {
@@ -80,7 +80,7 @@ pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface
             while (char_iter.next()) |char| {
                 if (col >= ctx.max.width) break;
                 const grapheme = char.bytes(line);
-                const grapheme_width = ctx.stringWidth(grapheme);
+                const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
 
                 if (col + grapheme_width >= ctx.max.width and
                     line_width > ctx.max.width and

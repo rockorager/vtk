@@ -204,7 +204,7 @@ pub fn draw(self: *TextField, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
             continue;
         }
         const g = grapheme.bytes(first_half);
-        const w = ctx.stringWidth(g);
+        const w: u8 = @intCast(ctx.stringWidth(g));
         if (col + w >= ctx.max.width) {
             surface.writeCell(ctx.max.width - 1, 0, .{
                 .char = ellipsis,
@@ -231,7 +231,7 @@ pub fn draw(self: *TextField, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
             continue;
         }
         const g = grapheme.bytes(second_half);
-        const w = ctx.stringWidth(g);
+        const w: u8 = @intCast(ctx.stringWidth(g));
         if (col + w > ctx.max.width) {
             surface.writeCell(ctx.max.width - 1, 0, .{
                 .char = ellipsis,
