@@ -195,6 +195,11 @@ pub const Point = struct {
     col: u16,
 };
 
+pub const RelativePoint = struct {
+    row: i32,
+    col: i32,
+};
+
 /// Result of a hit test
 pub const HitResult = struct {
     local: Point,
@@ -292,27 +297,26 @@ pub const Surface = struct {
         for (self.children) |child| {
             if (!child.containsPoint(point)) continue;
             const child_point: Point = .{
-                .row = point.row - child.origin.row,
-                .col = point.col - child.origin.col,
+                .row = @intCast(point.row - child.origin.row),
+                .col = @intCast(point.col - child.origin.col),
             };
             try child.surface.hitTest(list, child_point);
         }
     }
 
     /// Copies all cells from Surface to Window
-    pub fn render(self: Surface, win: vaxis.Window, focused: Widget) void {
+    pub fn render(self: Surface, win: Window, focused: Widget) void {
         // render self first
         for (0..self.size.height) |row| {
             for (0..self.size.width) |col| {
                 const cell = self.readCell(col, row);
-                win.writeCell(col, row, cell);
+                win.writeCell(@intCast(col), @intCast(row), cell);
             }
         }
 
         if (self.cursor) |cursor| {
             if (self.widget.eql(focused)) {
-                win.showCursor(cursor.col, cursor.row);
-                win.setCursorShape(cursor.shape);
+                win.setCursor(cursor.col, cursor.row, cursor.shape);
             }
         }
 
@@ -321,12 +325,7 @@ pub const Surface = struct {
 
         // for each child, we make a window and render to it
         for (self.children) |child| {
-            const child_win = win.child(.{
-                .x_off = child.origin.col,
-                .y_off = child.origin.row,
-                .width = .{ .limit = child.surface.size.width },
-                .height = .{ .limit = child.surface.size.height },
-            });
+            const child_win = win.child(child.origin.col, child.origin.row, child.surface.size);
             child.surface.render(child_win, focused);
         }
     }
@@ -342,7 +341,7 @@ pub const Surface = struct {
 
 pub const SubSurface = struct {
     /// Origin relative to parent
-    origin: Point,
+    origin: RelativePoint,
     /// This surface
     surface: Surface,
     /// z-index relative to siblings
@@ -358,6 +357,38 @@ pub const SubSurface = struct {
             point.row >= self.origin.row and
             point.col < (self.origin.col + self.surface.size.width) and
             point.row < (self.origin.row + self.surface.size.height);
+    }
+};
+
+pub const Window = struct {
+    x_off: i32,
+    y_off: i32,
+    size: Size,
+    screen: *vaxis.Screen,
+
+    pub fn writeCell(self: Window, col: u16, row: u16, cell: vaxis.Cell) void {
+        if (self.size.height <= row or self.size.width <= col) return;
+        if (self.x_off + col < 0) return;
+        if (self.y_off + row < 0) return;
+        self.screen.writeCell(@intCast(col + self.x_off), @intCast(row + self.y_off), cell);
+    }
+
+    pub fn child(self: Window, x_off: i32, y_off: i32, size: Size) Window {
+        return .{
+            .x_off = self.x_off + x_off,
+            .y_off = self.y_off + y_off,
+            .size = size,
+            .screen = self.screen,
+        };
+    }
+
+    pub fn setCursor(self: Window, col: u16, row: u16, shape: vaxis.Cell.CursorShape) void {
+        if (self.x_off + col < 0) return;
+        if (self.y_off + row < 0) return;
+        self.screen.cursor_shape = shape;
+        self.screen.cursor_vis = true;
+        self.screen.cursor_col = @intCast(col + self.x_off);
+        self.screen.cursor_row = @intCast(row + self.y_off);
     }
 };
 

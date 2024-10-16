@@ -149,7 +149,17 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         win.setCursorShape(.default);
         const surface = try widget.draw(draw_context);
 
-        surface.render(win, focus_handler.focused.widget);
+        const appwin: vtk.Window = .{
+            .x_off = 0,
+            .y_off = 0,
+            .size = .{
+                .width = @intCast(win.screen.width),
+                .height = @intCast(win.screen.height),
+            },
+            .screen = win.screen,
+        };
+
+        surface.render(appwin, focus_handler.focused.widget);
         try vx.render(buffered.writer().any());
         try buffered.flush();
 
