@@ -51,7 +51,7 @@ const cursor_indicator: vaxis.Cell = .{ .char = .{ .grapheme = "▐", .width = 1
 children: Source,
 cursor: usize = 0,
 /// Lines to scroll for a mouse wheel
-wheel_scroll: u8 = 1,
+wheel_scroll: u8 = 3,
 
 /// scroll position
 scroll: Scroll = .{},
