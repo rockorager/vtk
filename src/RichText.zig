@@ -14,6 +14,7 @@ pub const TextSpan = struct {
 
 text: []const TextSpan,
 text_align: enum { left, center, right } = .left,
+base_style: vaxis.Style = .{},
 softwrap: bool = true,
 overflow: enum { ellipsis, clip } = .ellipsis,
 width_basis: enum { parent, longest_line } = .longest_line,
@@ -32,9 +33,10 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 }
 
 pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+    var iter = try SoftwrapIterator.init(self.text, ctx);
     const container_width = switch (self.width_basis) {
         .parent => ctx.max.width,
-        .longest_line => @min(ctx.max.width, @max(ctx.min.width, try self.findWidestLine(ctx))),
+        .longest_line => @min(ctx.max.width, @max(ctx.min.width, try self.findWidestLine(&iter))),
     };
 
     // Create a surface of target width and max height. We'll trim the result after drawing
@@ -43,17 +45,11 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
         self.widget(),
         .{ .width = container_width, .height = ctx.max.height },
     );
-    // const base_style: vaxis.Style = .{
-    //     .fg = self.style.fg,
-    //     .bg = self.style.bg,
-    //     .reverse = self.style.reverse,
-    // };
-    // const base: vaxis.Cell = .{ .style = base_style };
-    // @memset(surface.buffer, base);
+    const base: vaxis.Cell = .{ .style = self.base_style };
+    @memset(surface.buffer, base);
 
     var row: u16 = 0;
     if (self.softwrap) {
-        var iter = try SoftwrapIterator.init(self.text, ctx);
         while (iter.next()) |line| {
             if (row >= ctx.max.height) break;
             defer row += 1;
@@ -68,66 +64,63 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
             }
         }
     } else {
-        // var line_iter: LineIterator = .{ .buf = self.text };
-        // while (line_iter.next()) |line| {
-        //     if (row >= ctx.max.height) break;
-        //     const line_width = ctx.stringWidth(line);
-        //     defer row += 1;
-        //     const resolved_line_width = @min(ctx.max.width, line_width);
-        //     var col: u16 = switch (self.text_align) {
-        //         .left => 0,
-        //         .center => (ctx.max.width - resolved_line_width) / 2,
-        //         .right => ctx.max.width - resolved_line_width,
-        //     };
-        //     var char_iter = ctx.graphemeIterator(line);
-        //     while (char_iter.next()) |char| {
-        //         if (col >= ctx.max.width) break;
-        //         const grapheme = char.bytes(line);
-        //         const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
-        //
-        //         if (col + grapheme_width >= ctx.max.width and
-        //             line_width > ctx.max.width and
-        //             self.overflow == .ellipsis)
-        //         {
-        //             surface.writeCell(col, row, .{
-        //                 .char = .{ .grapheme = "…", .width = 1 },
-        //                 .style = self.style,
-        //             });
-        //             col = ctx.max.width;
-        //         } else {
-        //             surface.writeCell(col, row, .{
-        //                 .char = .{ .grapheme = grapheme, .width = grapheme_width },
-        //                 .style = self.style,
-        //             });
-        //             col += @intCast(grapheme_width);
-        //         }
-        //     }
-        // }
+        while (iter.nextHardBreak()) |line| {
+            if (row >= ctx.max.height) break;
+            const line_width = blk: {
+                var w: u16 = 0;
+                for (line) |cell| {
+                    w +|= cell.char.width;
+                }
+                break :blk w;
+            };
+            defer row += 1;
+            var col: u16 = switch (self.text_align) {
+                .left => 0,
+                .center => (container_width -| line_width) / 2,
+                .right => container_width -| line_width,
+            };
+            for (line) |cell| {
+                if (col + cell.char.width >= iter.ctx.max.width and
+                    line_width > iter.ctx.max.width and
+                    self.overflow == .ellipsis)
+                {
+                    surface.writeCell(col, row, .{
+                        .char = .{ .grapheme = "…", .width = 1 },
+                    });
+                    col = ctx.max.width;
+                    continue;
+                } else {
+                    surface.writeCell(col, row, cell);
+                    col += @intCast(cell.char.width);
+                }
+            }
+        }
     }
     return surface.trimHeight(@max(row, ctx.min.height));
 }
 
 /// Finds the widest line within the viewable portion of ctx
-fn findWidestLine(self: RichText, ctx: vtk.DrawContext) Allocator.Error!u16 {
-    if (self.width_basis == .parent) return ctx.max.width;
+fn findWidestLine(self: RichText, iter: *SoftwrapIterator) Allocator.Error!u16 {
+    if (self.width_basis == .parent) return iter.ctx.max.width;
+    defer iter.reset();
     var row: u16 = 0;
     var max_width: u16 = 0;
     if (self.softwrap) {
-        var iter = try SoftwrapIterator.init(self.text, ctx);
         while (iter.next()) |line| {
-            if (row >= ctx.max.height) break;
+            if (row >= iter.ctx.max.height) break;
             defer row += 1;
             max_width = @max(max_width, line.width);
         }
     } else {
-        // var line_iter: LineIterator = .{ .buf = self.text };
-        // while (line_iter.next()) |line| {
-        //     if (row >= ctx.max.height) break;
-        //     const line_width = ctx.stringWidth(line);
-        //     defer row += 1;
-        //     const resolved_line_width = @min(ctx.max.width, line_width);
-        //     max_width = @max(max_width, resolved_line_width);
-        // }
+        while (iter.nextHardBreak()) |line| {
+            if (row >= iter.ctx.max.height) break;
+            defer row += 1;
+            var w: u16 = 0;
+            for (line) |cell| {
+                w +|= cell.char.width;
+            }
+            max_width = @max(max_width, w);
+        }
     }
     return max_width;
 }
@@ -177,7 +170,13 @@ pub const SoftwrapIterator = struct {
         };
     }
 
-    pub fn deinit(self: *SoftwrapIterator) void {
+    fn reset(self: *SoftwrapIterator) void {
+        self.index = 0;
+        self.hard_index = 0;
+        self.line = &.{};
+    }
+
+    fn deinit(self: *SoftwrapIterator) void {
         self.arena.deinit();
     }
 
