@@ -26,6 +26,7 @@ pub const TextField = @import("TextField.zig");
 pub const Spinner = @import("Spinner.zig");
 
 // Static
+pub const RichText = @import("RichText.zig");
 pub const Text = @import("Text.zig");
 
 const log = std.log.scoped(.vtk);

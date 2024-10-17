@@ -22,6 +22,7 @@ pub fn build(b: *std.Build) void {
         flexrow,
         listview,
         playground,
+        richtext,
         text,
     };
     const example_option = b.option(Example, "example", "Example to run (default: text_input)") orelse .text;
@@ -35,6 +36,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    example.root_module.addImport("vaxis", vaxis_dep.module("vaxis"));
     example.root_module.addImport("vtk", vtk_mod);
 
     const example_run = b.addRunArtifact(example);
