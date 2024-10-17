@@ -63,9 +63,6 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
                 .right => container_width - line.width,
             };
             for (line.cells) |cell| {
-                if (col == 0) {
-                    std.log.err("first cell='{s}'", .{cell.char.grapheme});
-                }
                 surface.writeCell(col, row, cell);
                 col += cell.char.width;
             }
