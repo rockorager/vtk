@@ -209,15 +209,13 @@ pub const SoftwrapIterator = struct {
                 // The number of bytes we trimmed is equal to the reduction in length
                 const trimmed_width = next_width - trimmed_bytes;
                 if (trimmed_width > self.ctx.max.width) {
-                    self.index += trimmed_bytes;
                     // Won't fit on line by itself, so fit as much on this line as we can
-                    var iter = self.ctx.graphemeIterator(trimmed);
+                    var iter = self.ctx.graphemeIterator(word);
                     while (iter.next()) |item| {
-                        const grapheme = item.bytes(trimmed);
+                        const grapheme = item.bytes(word);
                         const w = self.ctx.stringWidth(grapheme);
                         if (cur_width + w > self.ctx.max.width) {
                             const end = self.index;
-                            self.index = std.mem.indexOfNonePos(u8, self.line, self.index, soft_breaks) orelse self.line.len;
                             return .{ .width = cur_width, .bytes = self.line[start..end] };
                         }
                         cur_width += @intCast(w);
