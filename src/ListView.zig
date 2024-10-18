@@ -32,6 +32,8 @@ const Scroll = struct {
     pending_lines: i32 = 0,
     /// If there is more room to scroll down
     has_more: bool = true,
+    /// The cursor must be in the viewport
+    wants_cursor: bool = false,
 
     fn linesDown(self: *Scroll, n: u8) bool {
         if (!self.has_more) return false;
@@ -105,6 +107,12 @@ pub fn handleEvent(self: *ListView, event: vtk.Event) ?vtk.Command {
             {
                 return self.prevItem();
             }
+            if (key.matches(vaxis.Key.escape, .{})) {
+                self.ensureScroll();
+                return vtk.consumeAndRedraw();
+            }
+
+            // All other keypresses go to our focused child
             switch (self.children) {
                 .slice => |slice| {
                     const child = slice[self.cursor];
@@ -168,10 +176,7 @@ pub fn nextItem(self: *ListView) ?vtk.Command {
         }
     }
     // Reset scroll
-    if (self.cursor < self.scroll.top) {
-        self.scroll.top = @intCast(self.cursor);
-        self.scroll.offset = 0;
-    }
+    self.ensureScroll();
     return vtk.consumeAndRedraw();
 }
 
@@ -207,11 +212,18 @@ pub fn prevItem(self: *ListView) ?vtk.Command {
     }
 
     // Reset scroll
-    if (self.cursor < self.scroll.top) {
+    self.ensureScroll();
+    return vtk.consumeAndRedraw();
+}
+
+// Only call when cursor state has changed, or we want to ensure the cursored item is in view
+fn ensureScroll(self: *ListView) void {
+    if (self.cursor <= self.scroll.top) {
         self.scroll.top = @intCast(self.cursor);
         self.scroll.offset = 0;
+    } else {
+        self.scroll.wants_cursor = true;
     }
-    return vtk.consumeAndRedraw();
 }
 
 /// Inserts children until add_height is < 0
@@ -264,6 +276,7 @@ fn totalHeight(list: *const std.ArrayList(vtk.SubSurface)) usize {
 }
 
 fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocator.Error!vtk.Surface {
+    defer self.scroll.wants_cursor = false;
     // Set up surface
     var surface = try vtk.Surface.init(ctx.arena, self.widget(), ctx.max);
 
@@ -325,7 +338,7 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         // Set up constraints. We let the child be the entire height if it wants
         const child_ctx = ctx.withConstraints(
             .{ .width = ctx.max.width - 2, .height = 0 },
-            .{ .width = ctx.max.width - 2, .height = ctx.max.height },
+            .{ .width = ctx.max.width - 2, .height = 100 },
         );
 
         // Draw the child
@@ -333,42 +346,20 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         // We set the child to non-focusable so that we can manage where the keyevents go
         surf.focusable = false;
 
-        // Maybe draw the cursor. The cursor essentially is another node in the tree
-        if (self.draw_cursor and i == self.cursor) {
-            const sub = try ctx.arena.alloc(vtk.SubSurface, 1);
-            sub[0] = .{
-                .origin = .{ .col = 2, .row = 0 },
-                .surface = surf,
-                .z_index = 0,
-            };
-            const cursor_surf = try vtk.Surface.initWithChildren(
-                ctx.arena,
-                self.widget(),
-                .{ .width = 2, .height = surf.size.height },
-                sub,
-            );
-            for (0..cursor_surf.size.height) |row| {
-                cursor_surf.writeCell(0, @intCast(row), cursor_indicator);
-            }
-            try child_list.append(.{
-                .origin = .{ .col = 0, .row = accumulated_height },
-                .surface = cursor_surf,
-                .z_index = 0,
-            });
-        } else {
-            // Add the child surface to our list. It's offset from parent is the accumulated height
-            try child_list.append(.{
-                .origin = .{ .col = 2, .row = accumulated_height },
-                .surface = surf,
-                .z_index = 0,
-            });
-        }
+        // Add the child surface to our list. It's offset from parent is the accumulated height
+        try child_list.append(.{
+            .origin = .{ .col = 2, .row = accumulated_height },
+            .surface = surf,
+            .z_index = 0,
+        });
 
         // Accumulate the height
         accumulated_height += surf.size.height;
 
-        // Break if we drew enough
-        if (accumulated_height >= ctx.max.height) break;
+        if (self.scroll.wants_cursor and i < self.cursor)
+            continue // continue if we want the cursor and haven't gotten there yet
+        else if (accumulated_height >= ctx.max.height)
+            break; // Break if we drew enough
     } else {
         // This branch runs if we ran out of items. Set our state accordingly
         self.scroll.has_more = false;
@@ -382,6 +373,66 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         try self.insertChildren(ctx, builder, &child_list, @intCast(ctx.max.height - total_height));
         // Set the new total height
         total_height = totalHeight(&child_list);
+    }
+
+    if (self.draw_cursor and self.cursor >= self.scroll.top) {
+        // The index of the cursored widget in our child_list
+        const cursored_idx: u32 = self.cursor - self.scroll.top;
+        const sub = try ctx.arena.alloc(vtk.SubSurface, 1);
+        const child = child_list.items[cursored_idx];
+        sub[0] = .{
+            .origin = .{ .col = 2, .row = 0 },
+            .surface = child.surface,
+            .z_index = 0,
+        };
+        const cursor_surf = try vtk.Surface.initWithChildren(
+            ctx.arena,
+            self.widget(),
+            .{ .width = 2, .height = child.surface.size.height },
+            sub,
+        );
+        for (0..cursor_surf.size.height) |row| {
+            cursor_surf.writeCell(0, @intCast(row), cursor_indicator);
+        }
+        child_list.items[cursored_idx] = .{
+            .origin = .{ .col = 0, .row = child.origin.row },
+            .surface = cursor_surf,
+            .z_index = 0,
+        };
+    }
+
+    // If we want the cursor, we check that the cursored widget is fully in view. If it is too
+    // large, we position it so that it is the top item with a 0 offset
+    if (self.scroll.wants_cursor) {
+        const cursored_idx: u32 = self.cursor - self.scroll.top;
+        const sub = child_list.items[cursored_idx];
+        // The bottom row of the cursored widget
+        const bottom = sub.origin.row + sub.surface.size.height;
+        if (bottom > ctx.max.height) {
+            // Adjust the origin by the difference
+            // anchor bottom
+            var origin: i32 = ctx.max.height;
+            var idx: usize = cursored_idx + 1;
+            while (idx > 0) : (idx -= 1) {
+                var child = child_list.items[idx - 1];
+                origin -= child.surface.size.height;
+                child.origin.row = origin;
+                child_list.items[idx - 1] = child;
+            }
+        } else if (sub.surface.size.height >= ctx.max.height) {
+            // TODO: handle when the child is larger than our height.
+            // We need to change the max constraint to be optional sizes so that we can support
+            // unbounded drawing in scrollable areas
+            self.scroll.top = self.cursor;
+            self.scroll.offset = 0;
+            child_list.deinit();
+            try child_list.append(.{
+                .origin = .{ .col = 0, .row = 0 },
+                .surface = sub.surface,
+                .z_index = 0,
+            });
+            total_height = sub.surface.size.height;
+        }
     }
 
     // If we reached the bottom, we need to reset origins

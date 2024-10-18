@@ -12,7 +12,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     const rows = [_]vtk.Widget{
-        (vtk.Text{ .text = "Item 1\n  line 2\n  line 3\n  line 4\n  line5" }).widget(),
+        (vtk.Text{ .text = "Item 1\n  ├─line 2\n  ├─line 3\n  ├─line 4\n  └─line 5" }).widget(),
         (vtk.Text{ .text = "Item 2" }).widget(),
         (vtk.Text{ .text = "Item 3" }).widget(),
         (vtk.Text{ .text = "Item 4" }).widget(),
@@ -26,7 +26,7 @@ pub fn main() !void {
         (vtk.Text{ .text = "Item 12" }).widget(),
         (vtk.Text{ .text = "Item 13" }).widget(),
         (vtk.Text{ .text = "Item 14" }).widget(),
-        (vtk.Text{ .text = "Item 15" }).widget(),
+        (vtk.Text{ .text = "Item 15\n  ├─line 2\n  ├─line 3\n  ├─line 4\n  └─line 5" }).widget(),
         (vtk.Text{ .text = "Item 16" }).widget(),
         (vtk.Text{ .text = "Item 17" }).widget(),
         (vtk.Text{ .text = "Item 18" }).widget(),
@@ -40,6 +40,7 @@ pub fn main() !void {
         (vtk.Text{ .text = "Item 26" }).widget(),
         (vtk.Text{ .text = "Item 27" }).widget(),
         (vtk.Text{ .text = "Item 28" }).widget(),
+        (vtk.Text{ .text = "Item 29\n  ├─line 2\n  ├─line 3\n  ├─line 4\n  └─line 5" }).widget(),
     };
 
     var app = try vtk.App.init(allocator);
