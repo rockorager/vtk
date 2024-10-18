@@ -196,20 +196,10 @@ fn handleCommand(self: *App, maybe_cmd: ?vtk.Command) Allocator.Error!void {
 fn checkTimers(self: *App) Allocator.Error!void {
     const now_ms = std.time.milliTimestamp();
 
-    var expired = try std.ArrayList(vtk.Tick).initCapacity(self.allocator, self.timers.items.len);
-    defer expired.deinit();
-
     // timers are always sorted descending
-    var iter = std.mem.reverseIterator(self.timers.items);
-    while (iter.next()) |tick| {
+    while (self.timers.popOrNull()) |tick| {
         if (now_ms < tick.deadline_ms)
             break;
-        // Preallocated capacity
-        expired.appendAssumeCapacity(tick);
-        self.timers.items.len -= 1;
-    }
-
-    for (expired.items) |tick| {
         const maybe_cmd = tick.widget.handleEvent(.tick);
         try self.handleCommand(maybe_cmd);
     }
