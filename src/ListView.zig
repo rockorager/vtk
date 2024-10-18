@@ -331,14 +331,16 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         try self.insertChildren(ctx, builder, &child_list, accumulated_height);
     }
 
+    const child_offset: u16 = if (self.draw_cursor) 2 else 0;
+
     while (builder.itemAtIdx(i, self.cursor)) |child| {
         // Defer the increment
         defer i += 1;
 
         // Set up constraints. We let the child be the entire height if it wants
         const child_ctx = ctx.withConstraints(
-            .{ .width = ctx.max.width - 2, .height = 0 },
-            .{ .width = ctx.max.width - 2, .height = 100 },
+            .{ .width = ctx.max.width - child_offset, .height = 0 },
+            .{ .width = ctx.max.width - child_offset, .height = vtk.Size.unbounded },
         );
 
         // Draw the child

@@ -157,6 +157,8 @@ pub const DrawContext = struct {
 pub const Size = struct {
     width: u16 = 0,
     height: u16 = 0,
+
+    pub const unbounded = std.math.maxInt(u16);
 };
 
 /// The Widget interface
@@ -236,6 +238,8 @@ pub const Surface = struct {
     children: []SubSurface,
 
     pub fn init(allocator: Allocator, widget: Widget, size: Size) Allocator.Error!Surface {
+        assert(size.width != Size.unbounded);
+        assert(size.height != Size.unbounded);
         const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
         @memset(buffer, .{ .default = true });
         return .{
@@ -252,6 +256,8 @@ pub const Surface = struct {
         size: Size,
         children: []SubSurface,
     ) Allocator.Error!Surface {
+        assert(size.width != Size.unbounded);
+        assert(size.height != Size.unbounded);
         const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
         @memset(buffer, .{ .default = true });
         return .{

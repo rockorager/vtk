@@ -31,6 +31,7 @@ pub fn handleEvent(self: *const Center, event: vtk.Event) ?vtk.Command {
     return self.child.handleEvent(event);
 }
 
+/// Cannot have unbounded constraints
 pub fn draw(self: *const Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const child_ctx = ctx.withConstraints(.{ .width = 0, .height = 0 }, ctx.max);
     const child = try self.child.draw(child_ctx);
