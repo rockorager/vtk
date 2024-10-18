@@ -131,7 +131,7 @@ fn findContainerSize(self: Text, ctx: vtk.DrawContext) vtk.Size {
         }
     }
     const result_width = @min(ctx.max.width, max_width);
-    return .{ .width = result_width, .height = row };
+    return .{ .width = result_width, .height = @max(row, ctx.min.height) };
 }
 
 /// Iterates a slice of bytes by linebreaks. Lines are split by '\r', '\n', or '\r\n'
