@@ -350,7 +350,7 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
 
         // Add the child surface to our list. It's offset from parent is the accumulated height
         try child_list.append(.{
-            .origin = .{ .col = 2, .row = accumulated_height },
+            .origin = .{ .col = child_offset, .row = accumulated_height },
             .surface = surf,
             .z_index = 0,
         });
@@ -377,20 +377,23 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         total_height = totalHeight(&child_list);
     }
 
-    if (self.draw_cursor and self.cursor >= self.scroll.top) {
+    if (self.draw_cursor and self.cursor >= self.scroll.top) blk: {
         // The index of the cursored widget in our child_list
         const cursored_idx: u32 = self.cursor - self.scroll.top;
+        // Nothing to draw if our cursor is below our viewport
+        if (cursored_idx >= child_list.items.len) break :blk;
+
         const sub = try ctx.arena.alloc(vtk.SubSurface, 1);
         const child = child_list.items[cursored_idx];
         sub[0] = .{
-            .origin = .{ .col = 2, .row = 0 },
+            .origin = .{ .col = child_offset, .row = 0 },
             .surface = child.surface,
             .z_index = 0,
         };
         const cursor_surf = try vtk.Surface.initWithChildren(
             ctx.arena,
             self.widget(),
-            .{ .width = 2, .height = child.surface.size.height },
+            .{ .width = child_offset, .height = child.surface.size.height },
             sub,
         );
         for (0..cursor_surf.size.height) |row| {
