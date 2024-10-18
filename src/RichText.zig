@@ -34,16 +34,16 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 
 pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     var iter = try SoftwrapIterator.init(self.text, ctx);
-    const container_width = switch (self.width_basis) {
-        .parent => ctx.max.width,
-        .longest_line => @min(ctx.max.width, @max(ctx.min.width, try self.findWidestLine(&iter))),
+    const container_size = switch (self.width_basis) {
+        .parent => ctx.max,
+        .longest_line => self.findContainerSize(&iter),
     };
 
     // Create a surface of target width and max height. We'll trim the result after drawing
     const surface = try vtk.Surface.init(
         ctx.arena,
         self.widget(),
-        .{ .width = container_width, .height = ctx.max.height },
+        container_size,
     );
     const base: vaxis.Cell = .{ .style = self.base_style };
     @memset(surface.buffer, base);
@@ -55,8 +55,8 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
             defer row += 1;
             var col: u16 = switch (self.text_align) {
                 .left => 0,
-                .center => (container_width - line.width) / 2,
-                .right => container_width - line.width,
+                .center => (container_size.width - line.width) / 2,
+                .right => container_size.width - line.width,
             };
             for (line.cells) |cell| {
                 surface.writeCell(col, row, cell);
@@ -76,8 +76,8 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
             defer row += 1;
             var col: u16 = switch (self.text_align) {
                 .left => 0,
-                .center => (container_width -| line_width) / 2,
-                .right => container_width -| line_width,
+                .center => (container_size.width -| line_width) / 2,
+                .right => container_size.width -| line_width,
             };
             for (line) |cell| {
                 if (col + cell.char.width >= iter.ctx.max.width and
@@ -100,11 +100,10 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
 }
 
 /// Finds the widest line within the viewable portion of ctx
-fn findWidestLine(self: RichText, iter: *SoftwrapIterator) Allocator.Error!u16 {
-    if (self.width_basis == .parent) return iter.ctx.max.width;
+fn findContainerSize(self: RichText, iter: *SoftwrapIterator) vtk.Size {
     defer iter.reset();
     var row: u16 = 0;
-    var max_width: u16 = 0;
+    var max_width: u16 = iter.ctx.min.width;
     if (self.softwrap) {
         while (iter.next()) |line| {
             if (row >= iter.ctx.max.height) break;
@@ -122,7 +121,8 @@ fn findWidestLine(self: RichText, iter: *SoftwrapIterator) Allocator.Error!u16 {
             max_width = @max(max_width, w);
         }
     }
-    return max_width;
+    const result_width = @min(iter.ctx.max.width, max_width);
+    return .{ .width = result_width, .height = @max(row, iter.ctx.min.height) };
 }
 
 pub const SoftwrapIterator = struct {
