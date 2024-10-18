@@ -49,9 +49,13 @@ const Scroll = struct {
 const cursor_indicator: vaxis.Cell = .{ .char = .{ .grapheme = "▐", .width = 1 } };
 
 children: Source,
-cursor: usize = 0,
+cursor: u32 = 0,
+/// When true, the widget will draw a cursor next to the widget which has the cursor
+draw_cursor: bool = true,
 /// Lines to scroll for a mouse wheel
 wheel_scroll: u8 = 3,
+/// Set this if the exact item count is known.
+item_count: ?u32 = null,
 
 /// scroll position
 scroll: Scroll = .{},
@@ -90,22 +94,27 @@ pub fn handleEvent(self: *ListView, event: vtk.Event) ?vtk.Command {
         },
         .key_press => |key| {
             if (key.matches('j', .{}) or
+                key.matches('n', .{ .ctrl = true }) or
                 key.matches(vaxis.Key.down, .{}))
             {
-                if (self.scroll.has_more) {
-                    self.cursor += 1;
-                    return vtk.consumeAndRedraw();
-                }
-                return .consume_event;
+                return self.nextItem();
             }
             if (key.matches('k', .{}) or
+                key.matches('p', .{ .ctrl = true }) or
                 key.matches(vaxis.Key.up, .{}))
             {
-                if (self.cursor == 0) {
-                    return .consume_event;
-                }
-                self.cursor -|= 1;
-                return vtk.consumeAndRedraw();
+                return self.prevItem();
+            }
+            switch (self.children) {
+                .slice => |slice| {
+                    const child = slice[self.cursor];
+                    return child.handleEvent(event);
+                },
+                .builder => |builder| {
+                    if (builder.itemAtIdx(self.cursor, self.cursor)) |child| {
+                        return child.handleEvent(event);
+                    }
+                },
             }
         },
         else => {},
@@ -116,11 +125,93 @@ pub fn handleEvent(self: *ListView, event: vtk.Event) ?vtk.Command {
 pub fn draw(self: *ListView, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     switch (self.children) {
         .slice => |slice| {
+            self.item_count = @intCast(slice.len);
             const builder: SliceBuilder = .{ .slice = slice };
             return self.drawBuilder(ctx, .{ .userdata = &builder, .buildFn = SliceBuilder.build });
         },
         .builder => |b| return self.drawBuilder(ctx, b),
     }
+}
+
+pub fn nextItem(self: *ListView) ?vtk.Command {
+    // If we have a count, we can handle this directly
+    if (self.item_count) |count| {
+        if (self.cursor >= count - 1) {
+            return .consume_event;
+        }
+        self.cursor += 1;
+    } else {
+        switch (self.children) {
+            .slice => |slice| {
+                self.item_count = @intCast(slice.len);
+                // If we are already at the end, don't do anything
+                if (self.cursor == slice.len - 1) {
+                    return .consume_event;
+                }
+                // Advance the cursor
+                self.cursor += 1;
+            },
+            .builder => |builder| {
+                // Save our current state
+                const prev = self.cursor;
+                // Advance the cursor
+                self.cursor += 1;
+                // Check the bounds, reversing until we get the last item
+                while (builder.itemAtIdx(self.cursor, self.cursor) == null) {
+                    self.cursor -|= 1;
+                }
+                // If we didn't change state, we don't redraw
+                if (self.cursor == prev) {
+                    return .consume_event;
+                }
+            },
+        }
+    }
+    // Reset scroll
+    if (self.cursor < self.scroll.top) {
+        self.scroll.top = @intCast(self.cursor);
+        self.scroll.offset = 0;
+    }
+    return vtk.consumeAndRedraw();
+}
+
+pub fn prevItem(self: *ListView) ?vtk.Command {
+    if (self.cursor == 0) {
+        return .consume_event;
+    }
+
+    if (self.item_count) |count| {
+        // If for some reason our count changed, we handle it here
+        self.cursor = @min(self.cursor - 1, count - 1);
+    } else {
+        switch (self.children) {
+            .slice => |slice| {
+                self.item_count = @intCast(slice.len);
+                self.cursor = @min(self.cursor - 1, slice.len - 1);
+            },
+            .builder => |builder| {
+                // Save our current state
+                const prev = self.cursor;
+                // Decrement the cursor
+                self.cursor -= 1;
+                // Check the bounds, reversing until we get the last item
+                while (builder.itemAtIdx(self.cursor, self.cursor) == null) {
+                    self.cursor -|= 1;
+                }
+                // If we didn't change state, we don't redraw
+                if (self.cursor == prev) {
+                    return .consume_event;
+                }
+            },
+        }
+    }
+
+    // Reset scroll
+    if (self.cursor < self.scroll.top) {
+        self.scroll.top = @intCast(self.cursor);
+        self.scroll.offset = 0;
+    }
+    return vtk.consumeAndRedraw();
 }
 
 /// Inserts children until add_height is < 0
@@ -238,14 +329,40 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         );
 
         // Draw the child
-        const surf = try child.draw(child_ctx);
+        var surf = try child.draw(child_ctx);
+        // We set the child to non-focusable so that we can manage where the keyevents go
+        surf.focusable = false;
 
-        // Add the child surface to our list. It's offset from parent is the accumulated height
-        try child_list.append(.{
-            .origin = .{ .col = 2, .row = accumulated_height },
-            .surface = surf,
-            .z_index = 0,
-        });
+        // Maybe draw the cursor. The cursor essentially is another node in the tree
+        if (self.draw_cursor and i == self.cursor) {
+            const sub = try ctx.arena.alloc(vtk.SubSurface, 1);
+            sub[0] = .{
+                .origin = .{ .col = 2, .row = 0 },
+                .surface = surf,
+                .z_index = 0,
+            };
+            const cursor_surf = try vtk.Surface.initWithChildren(
+                ctx.arena,
+                self.widget(),
+                .{ .width = 2, .height = surf.size.height },
+                sub,
+            );
+            for (0..cursor_surf.size.height) |row| {
+                cursor_surf.writeCell(0, @intCast(row), cursor_indicator);
+            }
+            try child_list.append(.{
+                .origin = .{ .col = 0, .row = accumulated_height },
+                .surface = cursor_surf,
+                .z_index = 0,
+            });
+        } else {
+            // Add the child surface to our list. It's offset from parent is the accumulated height
+            try child_list.append(.{
+                .origin = .{ .col = 2, .row = accumulated_height },
+                .surface = surf,
+                .z_index = 0,
+            });
+        }
 
         // Accumulate the height
         accumulated_height += surf.size.height;
