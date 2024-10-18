@@ -92,19 +92,18 @@ pub fn handleEvent(self: *ListView, event: vtk.Event) ?vtk.Command {
             if (key.matches('j', .{}) or
                 key.matches(vaxis.Key.down, .{}))
             {
-                switch (self.children) {
-                    .slice => |slice| {
-                        if (self.cursor == slice.len - 1) return null;
-                        self.cursor += 1;
-                        return vtk.consumeAndRedraw();
-                    },
-                    .builder => @panic("todo"),
+                if (self.scroll.has_more) {
+                    self.cursor += 1;
+                    return vtk.consumeAndRedraw();
                 }
+                return .consume_event;
             }
             if (key.matches('k', .{}) or
                 key.matches(vaxis.Key.up, .{}))
             {
-                if (self.cursor == 0) return null;
+                if (self.cursor == 0) {
+                    return .consume_event;
+                }
                 self.cursor -|= 1;
                 return vtk.consumeAndRedraw();
             }
