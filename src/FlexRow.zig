@@ -25,8 +25,6 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     if (self.children.len == 0) return vtk.Surface.init(ctx.arena, self.widget(), ctx.min);
 
-    // Calculate initial width
-    const initial_width: u16 = ctx.max.width / @as(u16, @intCast(self.children.len));
     // Store the inherent size of each widget
     const size_list = try ctx.arena.alloc(u16, self.children.len);
 
@@ -34,7 +32,7 @@ pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
 
     const layout_ctx: vtk.DrawContext = .{
         .min = .{ .width = 0, .height = 0 },
-        .max = .{ .width = initial_width, .height = ctx.max.height },
+        .max = .{ .width = vtk.Size.unbounded, .height = ctx.max.height },
         .arena = layout_arena.allocator(),
     };
 
