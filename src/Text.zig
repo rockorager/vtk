@@ -28,10 +28,7 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 }
 
 pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
-    const container_size = switch (self.width_basis) {
-        .parent => ctx.max,
-        .longest_line => self.findContainerSize(ctx),
-    };
+    const container_size = self.findContainerSize(ctx);
 
     // Create a surface of target width and max height. We'll trim the result after drawing
     const surface = try vtk.Surface.init(
@@ -51,7 +48,7 @@ pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface
     if (self.softwrap) {
         var iter = SoftwrapIterator.init(self.text, ctx);
         while (iter.next()) |line| {
-            if (row >= ctx.max.height) break;
+            if (row >= container_size.height) break;
             defer row += 1;
             var col: u16 = switch (self.text_align) {
                 .left => 0,
@@ -72,30 +69,30 @@ pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface
     } else {
         var line_iter: LineIterator = .{ .buf = self.text };
         while (line_iter.next()) |line| {
-            if (row >= ctx.max.height) break;
+            if (row >= container_size.height) break;
             const line_width = ctx.stringWidth(line);
             defer row += 1;
-            const resolved_line_width = @min(ctx.max.width, line_width);
+            const resolved_line_width = @min(container_size.width, line_width);
             var col: u16 = switch (self.text_align) {
                 .left => 0,
-                .center => (ctx.max.width - resolved_line_width) / 2,
-                .right => ctx.max.width - resolved_line_width,
+                .center => (container_size.width - resolved_line_width) / 2,
+                .right => container_size.width - resolved_line_width,
             };
             var char_iter = ctx.graphemeIterator(line);
             while (char_iter.next()) |char| {
-                if (col >= ctx.max.width) break;
+                if (col >= container_size.width) break;
                 const grapheme = char.bytes(line);
                 const grapheme_width: u8 = @intCast(ctx.stringWidth(grapheme));
 
-                if (col + grapheme_width >= ctx.max.width and
-                    line_width > ctx.max.width and
+                if (col + grapheme_width >= container_size.width and
+                    line_width > container_size.width and
                     self.overflow == .ellipsis)
                 {
                     surface.writeCell(col, row, .{
                         .char = .{ .grapheme = "…", .width = 1 },
                         .style = self.style,
                     });
-                    col = ctx.max.width;
+                    col = container_size.width;
                 } else {
                     surface.writeCell(col, row, .{
                         .char = .{ .grapheme = grapheme, .width = grapheme_width },
@@ -116,21 +113,38 @@ fn findContainerSize(self: Text, ctx: vtk.DrawContext) vtk.Size {
     if (self.softwrap) {
         var iter = SoftwrapIterator.init(self.text, ctx);
         while (iter.next()) |line| {
-            if (row >= ctx.max.height) break;
+            if (ctx.max.outsideHeight(row))
+                break;
+
             defer row += 1;
             max_width = @max(max_width, line.width);
         }
     } else {
         var line_iter: LineIterator = .{ .buf = self.text };
         while (line_iter.next()) |line| {
-            if (row >= ctx.max.height) break;
-            const line_width = ctx.stringWidth(line);
+            if (ctx.max.outsideHeight(row))
+                break;
+            const line_width: u16 = @truncate(ctx.stringWidth(line));
             defer row += 1;
-            const resolved_line_width = @min(ctx.max.width, line_width);
+            const resolved_line_width = if (ctx.max.width) |max|
+                @min(max, line_width)
+            else
+                line_width;
             max_width = @max(max_width, resolved_line_width);
         }
     }
-    const result_width = @min(ctx.max.width, max_width);
+    const result_width = switch (self.width_basis) {
+        .longest_line => blk: {
+            if (ctx.max.width) |max|
+                break :blk @min(max, max_width)
+            else
+                break :blk max_width;
+        },
+        .parent => blk: {
+            std.debug.assert(ctx.max.width != null);
+            break :blk ctx.max.width.?;
+        },
+    };
     return .{ .width = result_width, .height = @max(row, ctx.min.height) };
 }
 
@@ -202,30 +216,32 @@ pub const SoftwrapIterator = struct {
             const word = self.line[self.index..idx];
             const next_width = self.ctx.stringWidth(word);
 
-            if (cur_width + next_width > self.ctx.max.width) {
-                // Trim the word to see if it can fit on a line by itself
-                const trimmed = std.mem.trimLeft(u8, word, " \t");
-                const trimmed_bytes = word.len - trimmed.len;
-                // The number of bytes we trimmed is equal to the reduction in length
-                const trimmed_width = next_width - trimmed_bytes;
-                if (trimmed_width > self.ctx.max.width) {
-                    // Won't fit on line by itself, so fit as much on this line as we can
-                    var iter = self.ctx.graphemeIterator(word);
-                    while (iter.next()) |item| {
-                        const grapheme = item.bytes(word);
-                        const w = self.ctx.stringWidth(grapheme);
-                        if (cur_width + w > self.ctx.max.width) {
-                            const end = self.index;
-                            return .{ .width = cur_width, .bytes = self.line[start..end] };
+            if (self.ctx.max.width) |max| {
+                if (cur_width + next_width > max) {
+                    // Trim the word to see if it can fit on a line by itself
+                    const trimmed = std.mem.trimLeft(u8, word, " \t");
+                    const trimmed_bytes = word.len - trimmed.len;
+                    // The number of bytes we trimmed is equal to the reduction in length
+                    const trimmed_width = next_width - trimmed_bytes;
+                    if (trimmed_width > max) {
+                        // Won't fit on line by itself, so fit as much on this line as we can
+                        var iter = self.ctx.graphemeIterator(word);
+                        while (iter.next()) |item| {
+                            const grapheme = item.bytes(word);
+                            const w = self.ctx.stringWidth(grapheme);
+                            if (cur_width + w > max) {
+                                const end = self.index;
+                                return .{ .width = cur_width, .bytes = self.line[start..end] };
+                            }
+                            cur_width += @intCast(w);
+                            self.index += grapheme.len;
                         }
-                        cur_width += @intCast(w);
-                        self.index += grapheme.len;
                     }
+                    // We are softwrapping, advance index to the start of the next word
+                    const end = self.index;
+                    self.index = std.mem.indexOfNonePos(u8, self.line, self.index, soft_breaks) orelse self.line.len;
+                    return .{ .width = cur_width, .bytes = self.line[start..end] };
                 }
-                // We are softwrapping, advance index to the start of the next word
-                const end = self.index;
-                self.index = std.mem.indexOfNonePos(u8, self.line, self.index, soft_breaks) orelse self.line.len;
-                return .{ .width = cur_width, .bytes = self.line[start..end] };
             }
 
             self.index = idx;

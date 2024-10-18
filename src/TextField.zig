@@ -19,13 +19,15 @@ const ellipsis: Cell.Character = .{ .grapheme = "…", .width = 1 };
 buf: Buffer,
 
 /// the number of graphemes to skip when drawing. Used for horizontal scrolling
-draw_offset: usize = 0,
+draw_offset: u16 = 0,
 /// the column we placed the cursor the last time we drew
-prev_cursor_col: usize = 0,
+prev_cursor_col: u16 = 0,
 /// the grapheme index of the cursor the last time we drew
-prev_cursor_idx: usize = 0,
+prev_cursor_idx: u16 = 0,
 /// approximate distance from an edge before we scroll
-scroll_offset: usize = 4,
+scroll_offset: u4 = 4,
+/// Previous width we drew at
+prev_width: u16 = 0,
 
 unicode: *const Unicode,
 
@@ -120,8 +122,8 @@ pub fn sliceToCursor(self: *TextField, buf: []u8) []const u8 {
 }
 
 /// calculates the display width from the draw_offset to the cursor
-pub fn widthToCursor(self: *TextField, ctx: vtk.DrawContext) usize {
-    var width: usize = 0;
+pub fn widthToCursor(self: *TextField, ctx: vtk.DrawContext) u16 {
+    var width: u16 = 0;
     const first_half = self.buf.firstHalf();
     var first_iter = self.unicode.graphemeIterator(first_half);
     var i: usize = 0;
@@ -131,7 +133,7 @@ pub fn widthToCursor(self: *TextField, ctx: vtk.DrawContext) usize {
             continue;
         }
         const g = grapheme.bytes(first_half);
-        width += ctx.stringWidth(g);
+        width += @intCast(ctx.stringWidth(g));
     }
     return width;
 }
@@ -152,10 +154,10 @@ pub fn cursorRight(self: *TextField) void {
     self.buf.moveGapRight(grapheme.len);
 }
 
-pub fn graphemesBeforeCursor(self: *const TextField) usize {
+pub fn graphemesBeforeCursor(self: *const TextField) u16 {
     const first_half = self.buf.firstHalf();
     var first_iter = self.unicode.graphemeIterator(first_half);
-    var i: usize = 0;
+    var i: u16 = 0;
     while (first_iter.next()) |_| {
         i += 1;
     }
@@ -168,11 +170,18 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 }
 
 pub fn draw(self: *TextField, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+    std.debug.assert(ctx.max.width != null);
+    const max_width = ctx.max.width.?;
+    if (max_width != self.prev_width) {
+        self.prev_width = max_width;
+        self.draw_offset = 0;
+        self.prev_cursor_col = 0;
+    }
     // Create a surface with max width and a minimum height of 1.
     var surface = try vtk.Surface.init(
         ctx.arena,
         self.widget(),
-        .{ .width = ctx.max.width, .height = @max(ctx.min.height, 1) },
+        .{ .width = max_width, .height = @max(ctx.min.height, 1) },
     );
     surface.focusable = true;
     surface.handles_mouse = true;
@@ -182,11 +191,11 @@ pub fn draw(self: *TextField, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
     const style: vaxis.Style = .{};
     const cursor_idx = self.graphemesBeforeCursor();
     if (cursor_idx < self.draw_offset) self.draw_offset = cursor_idx;
-    if (ctx.max.width == 0) return surface;
+    if (max_width == 0) return surface;
     while (true) {
         const width = self.widthToCursor(ctx);
-        if (width >= ctx.max.width) {
-            self.draw_offset +|= width - ctx.max.width + 1;
+        if (width >= max_width) {
+            self.draw_offset +|= width - max_width + 1;
             continue;
         } else break;
     }
@@ -196,8 +205,8 @@ pub fn draw(self: *TextField, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
 
     const first_half = self.buf.firstHalf();
     var first_iter = self.unicode.graphemeIterator(first_half);
-    var col: usize = 0;
-    var i: usize = 0;
+    var col: u16 = 0;
+    var i: u16 = 0;
     while (first_iter.next()) |grapheme| {
         if (i < self.draw_offset) {
             i += 1;
@@ -205,8 +214,8 @@ pub fn draw(self: *TextField, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
         }
         const g = grapheme.bytes(first_half);
         const w: u8 = @intCast(ctx.stringWidth(g));
-        if (col + w >= ctx.max.width) {
-            surface.writeCell(ctx.max.width - 1, 0, .{
+        if (col + w >= max_width) {
+            surface.writeCell(max_width - 1, 0, .{
                 .char = ellipsis,
                 .style = style,
             });
@@ -232,8 +241,8 @@ pub fn draw(self: *TextField, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface 
         }
         const g = grapheme.bytes(second_half);
         const w: u8 = @intCast(ctx.stringWidth(g));
-        if (col + w > ctx.max.width) {
-            surface.writeCell(ctx.max.width - 1, 0, .{
+        if (col + w > max_width) {
+            surface.writeCell(max_width - 1, 0, .{
                 .char = ellipsis,
                 .style = style,
             });

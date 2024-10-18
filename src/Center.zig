@@ -34,10 +34,11 @@ pub fn handleEvent(self: *const Center, event: vtk.Event) ?vtk.Command {
 /// Cannot have unbounded constraints
 pub fn draw(self: *const Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const child_ctx = ctx.withConstraints(.{ .width = 0, .height = 0 }, ctx.max);
+    const max_size = ctx.max.size();
     const child = try self.child.draw(child_ctx);
 
-    const x = (ctx.max.width - child.size.width) / 2;
-    const y = (ctx.max.height - child.size.height) / 2;
+    const x = (max_size.width - child.size.width) / 2;
+    const y = (max_size.height - child.size.height) / 2;
 
     const children = try ctx.arena.alloc(vtk.SubSurface, 1);
     children[0] = .{
@@ -46,5 +47,5 @@ pub fn draw(self: *const Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surfa
         .surface = child,
     };
 
-    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), ctx.max, children);
+    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), max_size, children);
 }

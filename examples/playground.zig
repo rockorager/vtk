@@ -34,14 +34,22 @@ const Model = struct {
             .{self.count},
         );
 
-        const flex: vtk.FlexRow = .{ .children = &.{ .{
-            .widget = (vtk.SizedBox{
-                .child = self.button.widget(),
-                .size = .{ .width = 24, .height = 4 },
-            }).widget(),
-        }, .{
-            .widget = self.text_field.widget(),
-        } } };
+        const flex: vtk.FlexRow = .{
+            .children = &.{
+                .{
+                    .widget = (vtk.SizedBox{
+                        .child = self.button.widget(),
+                        .size = .{ .width = 24, .height = 4 },
+                    }).widget(),
+                },
+                .{
+                    .widget = (vtk.SizedBox{
+                        .child = self.text_field.widget(),
+                        .size = .{ .width = 24, .height = 4 },
+                    }).widget(),
+                },
+            },
+        };
 
         var surface = try flex.draw(ctx);
         surface.widget = self.widget();

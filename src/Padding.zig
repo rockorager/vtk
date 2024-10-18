@@ -64,13 +64,27 @@ pub fn handleEvent(self: *const Padding, event: vtk.Event) ?vtk.Command {
 
 pub fn draw(self: *const Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     const pad = self.padding;
+    if (pad.left > 0 or pad.right > 0)
+        std.debug.assert(ctx.max.width != null);
+    if (pad.top > 0 or pad.bottom > 0)
+        std.debug.assert(ctx.max.height != null);
     const inner_min: vtk.Size = .{
         .width = ctx.min.width -| (pad.right + pad.left),
         .height = ctx.min.height -| (pad.top + pad.bottom),
     };
-    const inner_max: vtk.Size = .{
-        .width = ctx.max.width -| (pad.right + pad.left),
-        .height = ctx.max.height -| (pad.top + pad.bottom),
+
+    const max_width: ?u16 = if (ctx.max.width) |max|
+        max -| (pad.right + pad.left)
+    else
+        null;
+    const max_height: ?u16 = if (ctx.max.height) |max|
+        max -| (pad.top + pad.bottom)
+    else
+        null;
+
+    const inner_max: vtk.MaxSize = .{
+        .width = max_width,
+        .height = max_height,
     };
 
     const child_surface = try self.child.draw(ctx.withConstraints(inner_min, inner_max));

@@ -88,3 +88,8 @@ pub fn draw(self: *Spinner, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     });
     return surface;
 }
+
+test "Spinner satisfies widget interface" {
+    var spinner: Spinner = .{};
+    _ = spinner.widget();
+}

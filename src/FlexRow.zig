@@ -23,6 +23,8 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 }
 
 pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+    std.debug.assert(ctx.max.height != null);
+    std.debug.assert(ctx.max.width != null);
     if (self.children.len == 0) return vtk.Surface.init(ctx.arena, self.widget(), ctx.min);
 
     // Store the inherent size of each widget
@@ -32,7 +34,7 @@ pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
 
     const layout_ctx: vtk.DrawContext = .{
         .min = .{ .width = 0, .height = 0 },
-        .max = .{ .width = vtk.Size.unbounded, .height = ctx.max.height },
+        .max = .{ .width = null, .height = ctx.max.height },
         .arena = layout_arena.allocator(),
     };
 
@@ -54,21 +56,21 @@ pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
     // Draw again, but with distributed widths
     var second_pass_width: u16 = 0;
     var max_height: u16 = 0;
-    const remaining_space = ctx.max.width - first_pass_width;
+    const remaining_space = ctx.max.width.? - first_pass_width;
     for (self.children, 1..) |child, i| {
         const inherent_width = size_list[i - 1];
         const child_width = if (child.flex == 0)
             inherent_width
         else if (i == self.children.len)
             // If we are the last one, we just get the remainder
-            ctx.max.width - second_pass_width
+            ctx.max.width.? - second_pass_width
         else
             inherent_width + (remaining_space * child.flex) / total_flex;
 
         // Create a context for the child
         const child_ctx = ctx.withConstraints(
             .{ .width = child_width, .height = 0 },
-            .{ .width = child_width, .height = ctx.max.height },
+            .{ .width = child_width, .height = ctx.max.height.? },
         );
         const surf = try child.widget.draw(child_ctx);
 

@@ -34,10 +34,7 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 
 pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     var iter = try SoftwrapIterator.init(self.text, ctx);
-    const container_size = switch (self.width_basis) {
-        .parent => ctx.max,
-        .longest_line => self.findContainerSize(&iter),
-    };
+    const container_size = self.findContainerSize(&iter);
 
     // Create a surface of target width and max height. We'll trim the result after drawing
     const surface = try vtk.Surface.init(
@@ -51,7 +48,7 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
     var row: u16 = 0;
     if (self.softwrap) {
         while (iter.next()) |line| {
-            if (row >= ctx.max.height) break;
+            if (ctx.max.outsideHeight(row)) break;
             defer row += 1;
             var col: u16 = switch (self.text_align) {
                 .left => 0,
@@ -65,7 +62,7 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
         }
     } else {
         while (iter.nextHardBreak()) |line| {
-            if (row >= ctx.max.height) break;
+            if (ctx.max.outsideHeight(row)) break;
             const line_width = blk: {
                 var w: u16 = 0;
                 for (line) |cell| {
@@ -80,14 +77,14 @@ pub fn draw(self: *const RichText, ctx: vtk.DrawContext) Allocator.Error!vtk.Sur
                 .right => container_size.width -| line_width,
             };
             for (line) |cell| {
-                if (col + cell.char.width >= iter.ctx.max.width and
-                    line_width > iter.ctx.max.width and
+                if (col + cell.char.width >= container_size.width and
+                    line_width > container_size.width and
                     self.overflow == .ellipsis)
                 {
                     surface.writeCell(col, row, .{
                         .char = .{ .grapheme = "…", .width = 1 },
                     });
-                    col = ctx.max.width;
+                    col = container_size.width;
                     continue;
                 } else {
                     surface.writeCell(col, row, cell);
@@ -106,13 +103,13 @@ fn findContainerSize(self: RichText, iter: *SoftwrapIterator) vtk.Size {
     var max_width: u16 = iter.ctx.min.width;
     if (self.softwrap) {
         while (iter.next()) |line| {
-            if (row >= iter.ctx.max.height) break;
+            if (iter.ctx.max.outsideHeight(row)) break;
             defer row += 1;
             max_width = @max(max_width, line.width);
         }
     } else {
         while (iter.nextHardBreak()) |line| {
-            if (row >= iter.ctx.max.height) break;
+            if (iter.ctx.max.outsideHeight(row)) break;
             defer row += 1;
             var w: u16 = 0;
             for (line) |cell| {
@@ -121,7 +118,18 @@ fn findContainerSize(self: RichText, iter: *SoftwrapIterator) vtk.Size {
             max_width = @max(max_width, w);
         }
     }
-    const result_width = @min(iter.ctx.max.width, max_width);
+    const result_width = switch (self.width_basis) {
+        .longest_line => blk: {
+            if (iter.ctx.max.width) |max|
+                break :blk @min(max, max_width)
+            else
+                break :blk max_width;
+        },
+        .parent => blk: {
+            std.debug.assert(iter.ctx.max.width != null);
+            break :blk iter.ctx.max.width.?;
+        },
+    };
     return .{ .width = result_width, .height = @max(row, iter.ctx.min.height) };
 }
 
@@ -241,6 +249,18 @@ pub const SoftwrapIterator = struct {
             self.index = 0;
         }
 
+        const max_width = self.ctx.max.width orelse {
+            var width: u16 = 0;
+            for (self.line) |cell| {
+                width += cell.char.width;
+            }
+            self.index = self.line.len;
+            return .{
+                .width = width,
+                .cells = self.line,
+            };
+        };
+
         const start = self.index;
         var cur_width: u16 = 0;
         while (self.index < self.line.len) {
@@ -255,14 +275,14 @@ pub const SoftwrapIterator = struct {
                 break :blk w;
             };
 
-            if (cur_width + next_width > self.ctx.max.width) {
+            if (cur_width + next_width > max_width) {
                 // Trim the word to see if it can fit on a line by itself
                 const trimmed = trimWSPLeft(word);
                 const trimmed_width = next_width - trimmed.len;
-                if (trimmed_width > self.ctx.max.width) {
+                if (trimmed_width > max_width) {
                     // Won't fit on line by itself, so fit as much on this line as we can
                     for (word) |cell| {
-                        if (cur_width + cell.char.width > self.ctx.max.width) {
+                        if (cur_width + cell.char.width > max_width) {
                             const end = self.index;
                             return .{ .width = cur_width, .cells = self.line[start..end] };
                         }
@@ -309,3 +329,8 @@ pub const SoftwrapIterator = struct {
         return self.line.len;
     }
 };
+
+test "RichText satisfies widget interface" {
+    const text: RichText = .{ .text = &.{.{ .text = "Hello, World" }} };
+    _ = text.widget();
+}

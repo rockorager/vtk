@@ -34,15 +34,14 @@ pub fn handleEvent(self: *const SizedBox, event: vtk.Event) ?vtk.Command {
 
 /// SizedBox does not appear in the Surface tree
 pub fn draw(self: *const SizedBox, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
-    const max: vtk.Size = .{
+    const max: vtk.MaxSize = .{
         .width = @max(ctx.min.width, self.size.width),
         .height = @max(ctx.min.height, self.size.height),
     };
     const min: vtk.Size = .{
-        .width = @min(ctx.max.width, self.size.width),
-        .height = @min(ctx.max.height, self.size.height),
+        .width = if (ctx.max.width) |max_w| @min(max_w, self.size.width) else self.size.width,
+        .height = if (ctx.max.height) |max_h| @min(max_h, self.size.height) else self.size.height,
     };
-    std.debug.assert(max.width >= min.width and max.height >= min.height);
     return self.child.draw(ctx.withConstraints(min, max));
 }
 

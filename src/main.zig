@@ -120,7 +120,7 @@ pub const DrawContext = struct {
     arena: std.mem.Allocator,
     // Constraints
     min: Size,
-    max: Size,
+    max: MaxSize,
 
     // Unicode stuff
     var unicode: ?*const vaxis.Unicode = null;
@@ -145,7 +145,7 @@ pub const DrawContext = struct {
         return DrawContext.unicode.?.graphemeIterator(str);
     }
 
-    pub fn withConstraints(self: DrawContext, min: Size, max: Size) DrawContext {
+    pub fn withConstraints(self: DrawContext, min: Size, max: MaxSize) DrawContext {
         return .{
             .arena = self.arena,
             .min = min,
@@ -157,8 +157,35 @@ pub const DrawContext = struct {
 pub const Size = struct {
     width: u16 = 0,
     height: u16 = 0,
+};
 
-    pub const unbounded = std.math.maxInt(u16);
+pub const MaxSize = struct {
+    width: ?u16 = null,
+    height: ?u16 = null,
+
+    /// Returns true if the row would fall outside of this height. A null height value is infinite
+    /// and always returns false
+    pub fn outsideHeight(self: MaxSize, row: u16) bool {
+        const max = self.height orelse return false;
+        return row >= max;
+    }
+
+    /// Returns true if the col would fall outside of this width. A null width value is infinite
+    /// and always returns false
+    pub fn outsideWidth(self: MaxSize, col: u16) bool {
+        const max = self.width orelse return false;
+        return col >= max;
+    }
+
+    /// Asserts that neither height nor width are null
+    pub fn size(self: MaxSize) Size {
+        assert(self.width != null);
+        assert(self.height != null);
+        return .{
+            .width = self.width.?,
+            .height = self.height.?,
+        };
+    }
 };
 
 /// The Widget interface
@@ -238,8 +265,6 @@ pub const Surface = struct {
     children: []SubSurface,
 
     pub fn init(allocator: Allocator, widget: Widget, size: Size) Allocator.Error!Surface {
-        assert(size.width != Size.unbounded); // width cannot be unbounded
-        assert(size.height != Size.unbounded); // height cannot be unbounded
         const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
         @memset(buffer, .{ .default = true });
         return .{
@@ -256,8 +281,6 @@ pub const Surface = struct {
         size: Size,
         children: []SubSurface,
     ) Allocator.Error!Surface {
-        assert(size.width != Size.unbounded);
-        assert(size.height != Size.unbounded);
         const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
         @memset(buffer, .{ .default = true });
         return .{

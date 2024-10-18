@@ -131,6 +131,8 @@ pub fn handleEvent(self: *ListView, event: vtk.Event) ?vtk.Command {
 }
 
 pub fn draw(self: *ListView, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
+    std.debug.assert(ctx.max.width != null);
+    std.debug.assert(ctx.max.height != null);
     switch (self.children) {
         .slice => |slice| {
             self.item_count = @intCast(slice.len);
@@ -241,10 +243,13 @@ fn insertChildren(
         // Get the child
         const child = builder.itemAtIdx(self.scroll.top, self.cursor) orelse break;
 
+        const child_offset: u16 = if (self.draw_cursor) 2 else 0;
+        const max_size = ctx.max.size();
+
         // Set up constraints. We let the child be the entire height if it wants
         const child_ctx = ctx.withConstraints(
-            .{ .width = ctx.max.width - 2, .height = 0 },
-            .{ .width = ctx.max.width - 2, .height = ctx.max.height },
+            .{ .width = max_size.width - child_offset, .height = 0 },
+            .{ .width = max_size.width - child_offset, .height = null },
         );
 
         // Draw the child
@@ -277,8 +282,11 @@ fn totalHeight(list: *const std.ArrayList(vtk.SubSurface)) usize {
 
 fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocator.Error!vtk.Surface {
     defer self.scroll.wants_cursor = false;
-    // Set up surface
-    var surface = try vtk.Surface.init(ctx.arena, self.widget(), ctx.max);
+
+    // Get the size. asserts neither constraint is null
+    const max_size = ctx.max.size();
+    // Set up surface.
+    var surface = try vtk.Surface.init(ctx.arena, self.widget(), max_size);
 
     // Set state
     {
@@ -339,8 +347,8 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
 
         // Set up constraints. We let the child be the entire height if it wants
         const child_ctx = ctx.withConstraints(
-            .{ .width = ctx.max.width - child_offset, .height = 0 },
-            .{ .width = ctx.max.width - child_offset, .height = vtk.Size.unbounded },
+            .{ .width = max_size.width - child_offset, .height = 0 },
+            .{ .width = max_size.width - child_offset, .height = null },
         );
 
         // Draw the child
@@ -360,7 +368,7 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
 
         if (self.scroll.wants_cursor and i < self.cursor)
             continue // continue if we want the cursor and haven't gotten there yet
-        else if (accumulated_height >= ctx.max.height)
+        else if (accumulated_height >= max_size.height)
             break; // Break if we drew enough
     } else {
         // This branch runs if we ran out of items. Set our state accordingly
@@ -371,8 +379,8 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
 
     // If we reached the bottom, don't have enough height to fill the screen, and have room to add
     // more, then we add more until out of items or filled the space. This can happen on a resize
-    if (!self.scroll.has_more and total_height < ctx.max.height and self.scroll.top > 0) {
-        try self.insertChildren(ctx, builder, &child_list, @intCast(ctx.max.height - total_height));
+    if (!self.scroll.has_more and total_height < max_size.height and self.scroll.top > 0) {
+        try self.insertChildren(ctx, builder, &child_list, @intCast(max_size.height - total_height));
         // Set the new total height
         total_height = totalHeight(&child_list);
     }
@@ -413,10 +421,10 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         const sub = child_list.items[cursored_idx];
         // The bottom row of the cursored widget
         const bottom = sub.origin.row + sub.surface.size.height;
-        if (bottom > ctx.max.height) {
+        if (bottom > max_size.height) {
             // Adjust the origin by the difference
             // anchor bottom
-            var origin: i32 = ctx.max.height;
+            var origin: i32 = max_size.height;
             var idx: usize = cursored_idx + 1;
             while (idx > 0) : (idx -= 1) {
                 var child = child_list.items[idx - 1];
@@ -424,7 +432,7 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
                 child.origin.row = origin;
                 child_list.items[idx - 1] = child;
             }
-        } else if (sub.surface.size.height >= ctx.max.height) {
+        } else if (sub.surface.size.height >= max_size.height) {
             // TODO: handle when the child is larger than our height.
             // We need to change the max constraint to be optional sizes so that we can support
             // unbounded drawing in scrollable areas
@@ -441,7 +449,7 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
     }
 
     // If we reached the bottom, we need to reset origins
-    if (!self.scroll.has_more and total_height < ctx.max.height) {
+    if (!self.scroll.has_more and total_height < max_size.height) {
         // anchor top
         assert(self.scroll.top == 0);
         self.scroll.offset = 0;
@@ -454,7 +462,7 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         }
     } else if (!self.scroll.has_more) {
         // anchor bottom
-        var origin: i32 = ctx.max.height;
+        var origin: i32 = max_size.height;
         var idx: usize = child_list.items.len;
         while (idx > 0) : (idx -= 1) {
             var child = child_list.items[idx - 1];
@@ -473,7 +481,7 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
             self.scroll.offset = -child.origin.row;
             self.scroll.top += @intCast(idx);
         }
-        if (child.origin.row > ctx.max.height) {
+        if (child.origin.row > max_size.height) {
             end = idx;
             break;
         }
