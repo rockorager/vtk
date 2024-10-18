@@ -25,7 +25,7 @@ pub const Source = union(enum) {
 
 const Scroll = struct {
     /// Index of the first fully-in-view widget
-    top: usize = 0,
+    top: u32 = 0,
     /// Line offset within the top widget.
     offset: i32 = 0,
     /// Pending scroll amount
@@ -299,7 +299,7 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
         if (child.origin.row <= 0 and child.origin.row + child.surface.size.height > 0) {
             start = idx;
             self.scroll.offset = -child.origin.row;
-            self.scroll.top += idx;
+            self.scroll.top += @intCast(idx);
         }
         if (child.origin.row > ctx.max.height) {
             end = idx;
