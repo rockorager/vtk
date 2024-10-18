@@ -238,8 +238,8 @@ pub const Surface = struct {
     children: []SubSurface,
 
     pub fn init(allocator: Allocator, widget: Widget, size: Size) Allocator.Error!Surface {
-        assert(size.width != Size.unbounded);
-        assert(size.height != Size.unbounded);
+        assert(size.width != Size.unbounded); // width cannot be unbounded
+        assert(size.height != Size.unbounded); // height cannot be unbounded
         const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
         @memset(buffer, .{ .default = true });
         return .{
