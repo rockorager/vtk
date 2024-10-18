@@ -28,16 +28,16 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
 }
 
 pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
-    const container_width = switch (self.width_basis) {
-        .parent => ctx.max.width,
-        .longest_line => @min(ctx.max.width, @max(ctx.min.width, self.findWidestLine(ctx))),
+    const container_size = switch (self.width_basis) {
+        .parent => ctx.max,
+        .longest_line => self.findContainerSize(ctx),
     };
 
     // Create a surface of target width and max height. We'll trim the result after drawing
     const surface = try vtk.Surface.init(
         ctx.arena,
         self.widget(),
-        .{ .width = container_width, .height = ctx.max.height },
+        container_size,
     );
     const base_style: vaxis.Style = .{
         .fg = self.style.fg,
@@ -55,8 +55,8 @@ pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface
             defer row += 1;
             var col: u16 = switch (self.text_align) {
                 .left => 0,
-                .center => (container_width - line.width) / 2,
-                .right => container_width - line.width,
+                .center => (container_size.width - line.width) / 2,
+                .right => container_size.width - line.width,
             };
             var char_iter = ctx.graphemeIterator(line.bytes);
             while (char_iter.next()) |char| {
@@ -109,11 +109,10 @@ pub fn draw(self: *const Text, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface
     return surface.trimHeight(@max(row, ctx.min.height));
 }
 
-/// Finds the widest line within the viewable portion of ctx
-fn findWidestLine(self: Text, ctx: vtk.DrawContext) u16 {
-    if (self.width_basis == .parent) return ctx.max.width;
+/// Determines the container size by finding the widest line in the viewable area
+fn findContainerSize(self: Text, ctx: vtk.DrawContext) vtk.Size {
     var row: u16 = 0;
-    var max_width: u16 = 0;
+    var max_width: u16 = ctx.min.width;
     if (self.softwrap) {
         var iter = SoftwrapIterator.init(self.text, ctx);
         while (iter.next()) |line| {
@@ -131,7 +130,8 @@ fn findWidestLine(self: Text, ctx: vtk.DrawContext) u16 {
             max_width = @max(max_width, resolved_line_width);
         }
     }
-    return max_width;
+    const result_width = @min(ctx.max.width, max_width);
+    return .{ .width = result_width, .height = row };
 }
 
 /// Iterates a slice of bytes by linebreaks. Lines are split by '\r', '\n', or '\r\n'
