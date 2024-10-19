@@ -23,6 +23,7 @@ quit: bool = false,
 
 /// Runtime options
 pub const Options = struct {
+    /// Frames per second
     framerate: u8 = 60,
 };
 
@@ -87,8 +88,19 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
     focus_handler.intrusiveInit();
     defer focus_handler.deinit();
 
+    // Timestamp of our next frame
+    var next_frame_ms: u64 = @intCast(std.time.milliTimestamp());
+
     while (true) {
-        std.time.sleep(tick_ms * std.time.ns_per_ms);
+        const now_ms: u64 = @intCast(std.time.milliTimestamp());
+        if (now_ms >= next_frame_ms) {
+            // Deadline exceeded. Schedule the next frame
+            next_frame_ms = now_ms + tick_ms;
+        } else {
+            // Sleep until the deadline
+            std.time.sleep((next_frame_ms - now_ms) * std.time.ns_per_ms);
+            next_frame_ms += tick_ms;
+        }
 
         try self.checkTimers();
 
