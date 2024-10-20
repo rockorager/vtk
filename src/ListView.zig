@@ -219,7 +219,7 @@ pub fn prevItem(self: *ListView) ?vtk.Command {
 }
 
 // Only call when cursor state has changed, or we want to ensure the cursored item is in view
-fn ensureScroll(self: *ListView) void {
+pub fn ensureScroll(self: *ListView) void {
     if (self.cursor <= self.scroll.top) {
         self.scroll.top = @intCast(self.cursor);
         self.scroll.offset = 0;
