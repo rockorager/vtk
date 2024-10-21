@@ -264,13 +264,18 @@ pub const Surface = struct {
 
     children: []SubSurface,
 
-    pub fn init(allocator: Allocator, widget: Widget, size: Size) Allocator.Error!Surface {
+    /// Creates a slice of vaxis.Cell's equal to size.width * size.height
+    pub fn createBuffer(allocator: Allocator, size: Size) Allocator.Error![]vaxis.Cell {
         const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
         @memset(buffer, .{ .default = true });
+        return buffer;
+    }
+
+    pub fn init(allocator: Allocator, widget: Widget, size: Size) Allocator.Error!Surface {
         return .{
             .size = size,
             .widget = widget,
-            .buffer = buffer,
+            .buffer = try Surface.createBuffer(allocator, size),
             .children = &.{},
         };
     }
@@ -281,12 +286,10 @@ pub const Surface = struct {
         size: Size,
         children: []SubSurface,
     ) Allocator.Error!Surface {
-        const buffer = try allocator.alloc(vaxis.Cell, size.width * size.height);
-        @memset(buffer, .{ .default = true });
         return .{
             .size = size,
             .widget = widget,
-            .buffer = buffer,
+            .buffer = try Surface.createBuffer(allocator, size),
             .children = children,
         };
     }
