@@ -164,10 +164,8 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         const appwin: vtk.Window = .{
             .x_off = 0,
             .y_off = 0,
-            .size = .{
-                .width = @intCast(win.screen.width),
-                .height = @intCast(win.screen.height),
-            },
+            .width = @intCast(win.screen.width),
+            .height = @intCast(win.screen.height),
             .screen = win.screen,
         };
 

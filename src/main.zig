@@ -399,11 +399,12 @@ pub const SubSurface = struct {
 pub const Window = struct {
     x_off: i32,
     y_off: i32,
-    size: Size,
+    width: u16,
+    height: u16,
     screen: *vaxis.Screen,
 
     pub fn writeCell(self: Window, col: u16, row: u16, cell: vaxis.Cell) void {
-        if (self.size.height <= row or self.size.width <= col) return;
+        if (self.height <= row or self.width <= col) return;
         if (self.x_off + col < 0) return;
         if (self.y_off + row < 0) return;
         self.screen.writeCell(@intCast(col + self.x_off), @intCast(row + self.y_off), cell);
@@ -413,7 +414,8 @@ pub const Window = struct {
         return .{
             .x_off = self.x_off + x_off,
             .y_off = self.y_off + y_off,
-            .size = size,
+            .width = size.width,
+            .height = size.height,
             .screen = self.screen,
         };
     }
