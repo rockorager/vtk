@@ -286,7 +286,12 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
     // Get the size. asserts neither constraint is null
     const max_size = ctx.max.size();
     // Set up surface.
-    var surface = try vtk.Surface.init(ctx.arena, self.widget(), max_size);
+    var surface: vtk.Surface = .{
+        .size = max_size,
+        .widget = self.widget(),
+        .buffer = &.{},
+        .children = &.{},
+    };
 
     // Set state
     {

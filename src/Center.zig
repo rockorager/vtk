@@ -47,5 +47,10 @@ pub fn draw(self: *const Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surfa
         .surface = child,
     };
 
-    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), max_size, children);
+    return .{
+        .size = max_size,
+        .widget = self.widget(),
+        .buffer = &.{},
+        .children = children,
+    };
 }

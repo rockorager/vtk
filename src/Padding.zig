@@ -102,7 +102,12 @@ pub fn draw(self: *const Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
     };
 
     // Create the padding surface
-    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), size, children);
+    return .{
+        .size = size,
+        .widget = self.widget(),
+        .buffer = &.{},
+        .children = children,
+    };
 }
 
 test "Padding satisfies Widget interface" {

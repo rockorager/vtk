@@ -83,7 +83,12 @@ pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
         second_pass_width += surf.size.width;
     }
     const size = .{ .width = second_pass_width, .height = max_height };
-    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), size, children.items);
+    return .{
+        .size = size,
+        .widget = self.widget(),
+        .buffer = &.{},
+        .children = children.items,
+    };
 }
 
 test "FlexRow: validate widget interface" {

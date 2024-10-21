@@ -85,7 +85,12 @@ pub fn draw(self: *const FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     }
 
     const size = .{ .width = max_width, .height = second_pass_height };
-    return vtk.Surface.initWithChildren(ctx.arena, self.widget(), size, children.items);
+    return .{
+        .size = size,
+        .widget = self.widget(),
+        .buffer = &.{},
+        .children = children.items,
+    };
 }
 
 test "FlexColumn: validate widget interface" {
