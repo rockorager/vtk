@@ -259,7 +259,7 @@ pub const Surface = struct {
     /// Cursor state
     cursor: ?CursorState = null,
 
-    /// Contents of this surface. len == width * height
+    /// Contents of this surface. Must be len == 0 or  len == size.width * size.height
     buffer: []vaxis.Cell,
 
     children: []SubSurface,
@@ -341,9 +341,11 @@ pub const Surface = struct {
     /// Copies all cells from Surface to Window
     pub fn render(self: Surface, win: Window, focused: Widget) void {
         // render self first
-        for (0..self.size.height) |row| {
-            for (0..self.size.width) |col| {
-                const cell = self.readCell(col, row);
+        if (self.buffer.len > 0) {
+            assert(self.buffer.len == self.size.width * self.size.height);
+            for (self.buffer, 0..) |cell, i| {
+                const row = i / self.size.width;
+                const col = i % self.size.width;
                 win.writeCell(@intCast(col), @intCast(row), cell);
             }
         }
