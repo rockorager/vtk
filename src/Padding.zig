@@ -48,7 +48,7 @@ pub fn widget(self: *const Padding) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
     const self: *const Padding = @ptrCast(@alignCast(ptr));
     return self.handleEvent(event);
 }
@@ -58,7 +58,7 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn handleEvent(self: *const Padding, event: vtk.Event) ?vtk.Command {
+pub fn handleEvent(self: *const Padding, event: vtk.Event) anyerror!?vtk.Command {
     return self.child.handleEvent(event);
 }
 

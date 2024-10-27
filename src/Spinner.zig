@@ -40,7 +40,7 @@ pub fn widget(self: *Spinner) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
     const self: *Spinner = @ptrCast(@alignCast(ptr));
     return self.handleEvent(event);
 }

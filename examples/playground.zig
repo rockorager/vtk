@@ -14,7 +14,7 @@ const Model = struct {
         };
     }
 
-    fn typeErasedEventHandler(_: *anyopaque, event: vtk.Event) ?vtk.Command {
+    fn typeErasedEventHandler(_: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
         switch (event) {
             .key_press => |key| {
                 if (key.matches('c', .{ .ctrl = true })) return .quit;
@@ -57,7 +57,7 @@ const Model = struct {
         return surface;
     }
 
-    fn onClick(maybe_ptr: ?*anyopaque) ?vtk.Command {
+    fn onClick(maybe_ptr: ?*anyopaque) anyerror!?vtk.Command {
         const ptr = maybe_ptr orelse return null;
         const self: *Model = @ptrCast(@alignCast(ptr));
         self.count +|= 1;

@@ -86,6 +86,8 @@ pub const Command = union(enum) {
     quit,
     /// Change the mouse shape. This also has an implicit redraw
     set_mouse_shape: vaxis.Mouse.Shape,
+    /// Request that this widget receives focus
+    request_focus: Widget,
 };
 
 /// Returns true if the Command contains a .consume_event event
@@ -105,6 +107,7 @@ pub fn eventConsumed(maybe_cmd: ?Command) bool {
         .redraw,
         .quit,
         .set_mouse_shape,
+        .request_focus,
         => return false,
     }
 }
@@ -191,10 +194,10 @@ pub const MaxSize = struct {
 /// The Widget interface
 pub const Widget = struct {
     userdata: *anyopaque,
-    eventHandler: *const fn (userdata: *anyopaque, event: Event) ?Command,
+    eventHandler: *const fn (userdata: *anyopaque, event: Event) anyerror!?Command,
     drawFn: *const fn (userdata: *anyopaque, ctx: DrawContext) Allocator.Error!Surface,
 
-    pub fn handleEvent(self: Widget, event: Event) ?Command {
+    pub fn handleEvent(self: Widget, event: Event) anyerror!?Command {
         return self.eventHandler(self.userdata, event);
     }
 
@@ -381,7 +384,7 @@ pub const SubSurface = struct {
     /// This surface
     surface: Surface,
     /// z-index relative to siblings
-    z_index: u8,
+    z_index: u8 = 0,
 
     pub fn lessThan(_: void, lhs: SubSurface, rhs: SubSurface) bool {
         return lhs.z_index < rhs.z_index;
@@ -431,7 +434,7 @@ pub const Window = struct {
 };
 
 /// A noop event handler for widgets which don't require any event handling
-pub fn noopEventHandler(_: *anyopaque, _: Event) ?Command {
+pub fn noopEventHandler(_: *anyopaque, _: Event) anyerror!?Command {
     return null;
 }
 

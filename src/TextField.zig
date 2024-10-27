@@ -31,6 +31,14 @@ prev_width: u16 = 0,
 
 unicode: *const Unicode,
 
+previous_val: []const u8 = "",
+
+userdata: ?*anyopaque = null,
+onChange: ?*const fn (?*anyopaque, []const u8) anyerror!?vtk.Command = null,
+onSubmit: ?*const fn (?*anyopaque, []const u8) anyerror!?vtk.Command = null,
+
+cmds: [2]vtk.Command = .{ .consume_event, .redraw },
+
 pub fn init(alloc: std.mem.Allocator, unicode: *const Unicode) TextField {
     return TextField{
         .buf = Buffer.init(alloc),
@@ -39,6 +47,7 @@ pub fn init(alloc: std.mem.Allocator, unicode: *const Unicode) TextField {
 }
 
 pub fn deinit(self: *TextField) void {
+    self.buf.allocator.free(self.previous_val);
     self.buf.deinit();
 }
 
@@ -50,21 +59,21 @@ pub fn widget(self: *TextField) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
     const self: *TextField = @ptrCast(@alignCast(ptr));
     return self.handleEvent(event);
 }
 
-pub fn handleEvent(self: *TextField, event: vtk.Event) ?vtk.Command {
+pub fn handleEvent(self: *TextField, event: vtk.Event) anyerror!?vtk.Command {
     switch (event) {
         .focus_out, .focus_in => return .redraw,
         .key_press => |key| {
             if (key.matches(Key.backspace, .{})) {
                 self.deleteBeforeCursor();
-                return vtk.consumeAndRedraw();
+                return self.checkChanged();
             } else if (key.matches(Key.delete, .{}) or key.matches('d', .{ .ctrl = true })) {
                 self.deleteAfterCursor();
-                return vtk.consumeAndRedraw();
+                return self.checkChanged();
             } else if (key.matches(Key.left, .{}) or key.matches('b', .{ .ctrl = true })) {
                 self.cursorLeft();
                 return vtk.consumeAndRedraw();
@@ -79,10 +88,10 @@ pub fn handleEvent(self: *TextField, event: vtk.Event) ?vtk.Command {
                 return vtk.consumeAndRedraw();
             } else if (key.matches('k', .{ .ctrl = true })) {
                 self.deleteToEnd();
-                return vtk.consumeAndRedraw();
+                return self.checkChanged();
             } else if (key.matches('u', .{ .ctrl = true })) {
                 self.deleteToStart();
-                return vtk.consumeAndRedraw();
+                return self.checkChanged();
             } else if (key.matches('b', .{ .alt = true }) or key.matches(Key.left, .{ .alt = true })) {
                 self.moveBackwardWordwise();
                 return vtk.consumeAndRedraw();
@@ -91,20 +100,45 @@ pub fn handleEvent(self: *TextField, event: vtk.Event) ?vtk.Command {
                 return vtk.consumeAndRedraw();
             } else if (key.matches('w', .{ .ctrl = true }) or key.matches(Key.backspace, .{ .alt = true })) {
                 self.deleteWordBefore();
-                return vtk.consumeAndRedraw();
+                return self.checkChanged();
             } else if (key.matches('d', .{ .alt = true })) {
                 self.deleteWordAfter();
-                return vtk.consumeAndRedraw();
+                return self.checkChanged();
+            } else if (key.matches(vaxis.Key.enter, .{})) {
+                if (self.onSubmit) |onSubmit| {
+                    if (try onSubmit(self.userdata, self.previous_val)) |cmd| {
+                        self.cmds[0] = cmd;
+                        self.cmds[1] = vtk.consumeAndRedraw();
+                        return .{ .batch = &self.cmds };
+                    }
+                }
+                return self.checkChanged();
             } else if (key.text) |text| {
-                self.insertSliceAtCursor(text) catch |err| {
-                    std.log.err("Couldn't insert char: {}", .{err});
-                };
-                return vtk.consumeAndRedraw();
+                try self.insertSliceAtCursor(text);
+                return self.checkChanged();
             }
         },
         else => {},
     }
     return null;
+}
+
+fn checkChanged(self: *TextField) anyerror!?vtk.Command {
+    const new = try self.buf.dupe();
+    if (std.mem.eql(u8, new, self.previous_val)) {
+        self.buf.allocator.free(new);
+        return vtk.consumeAndRedraw();
+    }
+    self.buf.allocator.free(self.previous_val);
+    self.previous_val = new;
+    if (self.onChange) |onChange| {
+        if (try onChange(self.userdata, new)) |cmd| {
+            self.cmds[0] = cmd;
+            self.cmds[1] = vtk.consumeAndRedraw();
+            return .{ .batch = &self.cmds };
+        }
+    }
+    return vtk.consumeAndRedraw();
 }
 
 /// insert text at the cursor position
@@ -369,7 +403,7 @@ test "assertion" {
     var input = TextField.init(std.testing.allocator, &unicode);
     defer input.deinit();
     for (0..6) |_| {
-        _ = input.handleEvent(.{ .key_press = astronaut_emoji });
+        _ = try input.handleEvent(.{ .key_press = astronaut_emoji });
     }
 }
 
@@ -481,17 +515,22 @@ pub const Buffer = struct {
     }
 
     pub fn toOwnedSlice(self: *Buffer) std.mem.Allocator.Error![]const u8 {
+        const slice = try self.dupe();
+        self.clearAndFree();
+        return slice;
+    }
+
+    pub fn realLength(self: *const Buffer) usize {
+        return self.firstHalf().len + self.secondHalf().len;
+    }
+
+    pub fn dupe(self: *const Buffer) std.mem.Allocator.Error![]const u8 {
         const first_half = self.firstHalf();
         const second_half = self.secondHalf();
         const buf = try self.allocator.alloc(u8, first_half.len + second_half.len);
         @memcpy(buf[0..first_half.len], first_half);
         @memcpy(buf[first_half.len..], second_half);
-        self.clearAndFree();
         return buf;
-    }
-
-    pub fn realLength(self: *const Buffer) usize {
-        return self.firstHalf().len + self.secondHalf().len;
     }
 };
 

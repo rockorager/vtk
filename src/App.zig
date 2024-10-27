@@ -20,6 +20,7 @@ vx: vaxis.Vaxis,
 timers: std.ArrayList(vtk.Tick),
 redraw: bool = true,
 quit: bool = false,
+wants_focus: ?vtk.Widget,
 
 /// Runtime options
 pub const Options = struct {
@@ -36,6 +37,7 @@ pub fn init(allocator: Allocator) !App {
         .tty = try vaxis.Tty.init(),
         .vx = try vaxis.init(allocator, .{ .system_clipboard_allocator = allocator }),
         .timers = std.ArrayList(vtk.Tick).init(allocator),
+        .wants_focus = null,
     };
 }
 
@@ -107,7 +109,7 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         while (loop.tryEvent()) |event| {
             switch (event) {
                 .key_press => |key| {
-                    const maybe_cmd = focus_handler.handleEvent(event);
+                    const maybe_cmd = try focus_handler.handleEvent(event);
                     if (vtk.eventConsumed(maybe_cmd)) {
                         try self.handleCommand(maybe_cmd);
                     } else {
@@ -115,11 +117,11 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
                             self.quit = true;
                         }
                         if (key.matches(vaxis.Key.tab, .{})) {
-                            const cmd = focus_handler.focusNext();
+                            const cmd = try focus_handler.focusNext();
                             try self.handleCommand(cmd);
                         }
                         if (key.matches(vaxis.Key.tab, .{ .shift = true })) {
-                            const cmd = focus_handler.focusPrev();
+                            const cmd = try focus_handler.focusPrev();
                             try self.handleCommand(cmd);
                         }
                     }
@@ -132,7 +134,7 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
                     self.redraw = true;
                 },
                 else => {
-                    const maybe_cmd = widget.handleEvent(event);
+                    const maybe_cmd = try widget.handleEvent(event);
                     try self.handleCommand(maybe_cmd);
                 },
             }
@@ -169,13 +171,15 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
             .screen = win.screen,
         };
 
-        surface.render(appwin, focus_handler.focused.widget);
+        const focused = self.wants_focus orelse focus_handler.focused.widget;
+        surface.render(appwin, focused);
         try vx.render(buffered.writer().any());
         try buffered.flush();
 
         // Store the last frame
         mouse_handler.last_frame = surface;
-        try focus_handler.update(surface);
+        try focus_handler.update(surface, self.wants_focus);
+        self.wants_focus = null;
     }
 }
 
@@ -200,17 +204,18 @@ fn handleCommand(self: *App, maybe_cmd: ?vtk.Command) Allocator.Error!void {
             self.vx.setMouseShape(shape);
             self.redraw = true;
         },
+        .request_focus => |widget| self.wants_focus = widget,
     }
 }
 
-fn checkTimers(self: *App) Allocator.Error!void {
+fn checkTimers(self: *App) anyerror!void {
     const now_ms = std.time.milliTimestamp();
 
     // timers are always sorted descending
     while (self.timers.popOrNull()) |tick| {
         if (now_ms < tick.deadline_ms)
             break;
-        const maybe_cmd = tick.widget.handleEvent(.tick);
+        const maybe_cmd = try tick.widget.handleEvent(.tick);
         try self.handleCommand(maybe_cmd);
     }
 }
@@ -231,7 +236,7 @@ const MouseHandler = struct {
         };
     }
 
-    fn handleMouse(self: *MouseHandler, app: *App, mouse: vaxis.Mouse) Allocator.Error!void {
+    fn handleMouse(self: *MouseHandler, app: *App, mouse: vaxis.Mouse) anyerror!void {
         const last_frame = self.last_frame;
 
         // For mouse events we store the last frame and use that for hit testing
@@ -253,7 +258,7 @@ const MouseHandler = struct {
             var m_local = mouse;
             m_local.col = item.local.col;
             m_local.row = item.local.row;
-            const maybe_cmd = item.widget.handleEvent(.{ .mouse = m_local });
+            const maybe_cmd = try item.widget.handleEvent(.{ .mouse = m_local });
             try app.handleCommand(maybe_cmd);
 
             // If the event wasn't consumed, we keep passing it on
@@ -261,7 +266,7 @@ const MouseHandler = struct {
 
             if (self.maybe_last_handler) |last_mouse_handler| {
                 if (!last_mouse_handler.eql(item.widget)) {
-                    const cmd = last_mouse_handler.handleEvent(.mouse_leave);
+                    const cmd = try last_mouse_handler.handleEvent(.mouse_leave);
                     try app.handleCommand(cmd);
                 }
             }
@@ -273,9 +278,9 @@ const MouseHandler = struct {
         return self.mouseExit(app);
     }
 
-    fn mouseExit(self: *MouseHandler, app: *App) Allocator.Error!void {
+    fn mouseExit(self: *MouseHandler, app: *App) anyerror!void {
         if (self.maybe_last_handler) |last_handler| {
-            const cmd = last_handler.handleEvent(.mouse_leave);
+            const cmd = try last_handler.handleEvent(.mouse_leave);
             try app.handleCommand(cmd);
             self.maybe_last_handler = null;
         }
@@ -289,6 +294,7 @@ const FocusHandler = struct {
 
     root: Node,
     focused: *Node,
+    maybe_wants_focus: ?vtk.Widget = null,
 
     cmds: [2]vtk.Command,
 
@@ -405,6 +411,7 @@ const FocusHandler = struct {
             .focused = undefined,
             .arena = std.heap.ArenaAllocator.init(allocator),
             .cmds = [_]vtk.Command{ .redraw, .redraw },
+            .maybe_wants_focus = null,
         };
     }
 
@@ -417,8 +424,9 @@ const FocusHandler = struct {
     }
 
     /// Update the focus list
-    fn update(self: *FocusHandler, root: vtk.Surface) Allocator.Error!void {
+    fn update(self: *FocusHandler, root: vtk.Surface, maybe_wants_focus: ?vtk.Widget) Allocator.Error!void {
         _ = self.arena.reset(.retain_capacity);
+        self.maybe_wants_focus = maybe_wants_focus;
 
         var list = std.ArrayList(*Node).init(self.arena.allocator());
         for (root.children) |child| {
@@ -451,6 +459,12 @@ const FocusHandler = struct {
                 .parent = parent,
                 .children = child_list.items,
             };
+            if (self.maybe_wants_focus) |wants_focus| {
+                if (wants_focus.eql(surface.widget)) {
+                    self.focused = node;
+                    self.maybe_wants_focus = null;
+                }
+            }
             try list.append(node);
         } else {
             for (surface.children) |child| {
@@ -459,16 +473,16 @@ const FocusHandler = struct {
         }
     }
 
-    fn focusNode(self: *FocusHandler, node: *Node) ?vtk.Command {
+    fn focusNode(self: *FocusHandler, node: *Node) anyerror!?vtk.Command {
         if (self.focused.widget.eql(node.widget)) return null;
 
         const last_focus = self.focused;
         self.focused = node;
-        const maybe_cmd1 = last_focus.widget.handleEvent(.focus_out);
+        const maybe_cmd1 = try last_focus.widget.handleEvent(.focus_out);
         if (maybe_cmd1) |cmd1|
             self.cmds[0] = cmd1;
 
-        const maybe_cmd2 = self.focused.widget.handleEvent(.focus_in);
+        const maybe_cmd2 = try self.focused.widget.handleEvent(.focus_in);
         if (maybe_cmd2) |cmd2|
             self.cmds[1] = cmd2;
 
@@ -483,19 +497,19 @@ const FocusHandler = struct {
     }
 
     /// Focuses the next focusable widget
-    fn focusNext(self: *FocusHandler) ?vtk.Command {
+    fn focusNext(self: *FocusHandler) anyerror!?vtk.Command {
         return self.focusNode(self.focused.nextNode());
     }
 
     /// Focuses the previous focusable widget
-    fn focusPrev(self: *FocusHandler) ?vtk.Command {
+    fn focusPrev(self: *FocusHandler) anyerror!?vtk.Command {
         return self.focusNode(self.focused.prevNode());
     }
 
-    fn handleEvent(self: *FocusHandler, event: vtk.Event) ?vtk.Command {
+    fn handleEvent(self: *FocusHandler, event: vtk.Event) anyerror!?vtk.Command {
         var maybe_node: ?*Node = self.focused;
         while (maybe_node) |node| {
-            const cmd = node.widget.handleEvent(event);
+            const cmd = try node.widget.handleEvent(event);
             if (vtk.eventConsumed(cmd)) return cmd;
             maybe_node = node.parent;
         }

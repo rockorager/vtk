@@ -12,7 +12,7 @@ const Button = @This();
 
 // User supplied values
 label: []const u8,
-onClick: *const fn (?*anyopaque) ?vtk.Command,
+onClick: *const fn (?*anyopaque) anyerror!?vtk.Command,
 userdata: ?*anyopaque = null,
 
 // Styles
@@ -51,12 +51,12 @@ pub fn widget(self: *Button) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) ?vtk.Command {
+fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
     const self: *Button = @ptrCast(@alignCast(ptr));
     return self.handleEvent(event);
 }
 
-pub fn handleEvent(self: *Button, event: vtk.Event) ?vtk.Command {
+pub fn handleEvent(self: *Button, event: vtk.Event) anyerror!?vtk.Command {
     switch (event) {
         .key_press => |key| {
             if (key.matches(vaxis.Key.enter, .{})) {
@@ -144,8 +144,8 @@ pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     };
 }
 
-fn doClick(self: *Button) ?vtk.Command {
-    if (self.onClick(self.userdata)) |cmd| {
+fn doClick(self: *Button) anyerror!?vtk.Command {
+    if (try self.onClick(self.userdata)) |cmd| {
         self.cmds[0] = cmd;
         self.cmds[1] = vtk.consumeAndRedraw();
         return .{ .batch = &self.cmds };
@@ -157,7 +157,7 @@ test Button {
     const Foo = struct {
         count: u8,
 
-        fn onClick(ptr: ?*anyopaque) ?vtk.Command {
+        fn onClick(ptr: ?*anyopaque) anyerror!?vtk.Command {
             const foo: *@This() = @ptrCast(@alignCast(ptr));
             foo.count +|= 1;
             return null;
