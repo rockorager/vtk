@@ -89,7 +89,43 @@ pub fn draw(self: *Spinner, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     return surface;
 }
 
-test "Spinner satisfies widget interface" {
+test Spinner {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    // Create a spinner
     var spinner: Spinner = .{};
-    _ = spinner.widget();
+    // Get our widget interface
+    const spinner_widget = spinner.widget();
+
+    // Start the spinner. This (maybe) returns a Tick command to schedule the next frame. If the
+    // spinner is already running, no command is returned. Calling start is thread safe
+    const maybe_cmd = spinner.start();
+    try std.testing.expect(maybe_cmd != null);
+    try std.testing.expect(maybe_cmd.? == .tick);
+    try std.testing.expectEqual(1, spinner.count.load(.unordered));
+
+    // If we call start again, we won't get another command but our counter will go up
+    const maybe_cmd2 = spinner.start();
+    try std.testing.expect(maybe_cmd2 == null);
+    try std.testing.expectEqual(2, spinner.count.load(.unordered));
+
+    // The event loop handles the tick event and calls us back with a .tick event. If we should keep
+    // running, we will return a new tick event
+    _ = try spinner_widget.handleEvent(.tick);
+
+    // Receiving a .tick advances the frame
+    try std.testing.expectEqual(1, spinner.frame);
+
+    // Simulate a draw
+    const surface = try spinner_widget.draw(.{ .arena = arena.allocator(), .min = .{}, .max = .{} });
+
+    // Spinner will try to be 1x1
+    try std.testing.expectEqual(1, surface.size.width);
+    try std.testing.expectEqual(1, surface.size.height);
+
+    // Stopping the spinner decrements our counter
+    spinner.stop();
+    try std.testing.expectEqual(1, spinner.count.load(.unordered));
+    spinner.stop();
+    try std.testing.expectEqual(0, spinner.count.load(.unordered));
 }
