@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) void {
     const Example = enum {
         flexcolumn,
         flexrow,
+        fuzzy,
         listview,
         playground,
         richtext,
