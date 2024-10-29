@@ -18,8 +18,6 @@ allocator: Allocator,
 tty: vaxis.Tty,
 vx: vaxis.Vaxis,
 timers: std.ArrayList(vtk.Tick),
-redraw: bool = true,
-quit: bool = false,
 wants_focus: ?vtk.Widget,
 
 /// Runtime options
@@ -93,6 +91,16 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
     // Timestamp of our next frame
     var next_frame_ms: u64 = @intCast(std.time.milliTimestamp());
 
+    // Create our event context
+    var ctx: vtk.EventContext = .{
+        .phase = .at_target,
+        .cmds = vtk.CommandList.init(self.allocator),
+        .consume_event = false,
+        .redraw = false,
+        .quit = false,
+    };
+    defer ctx.cmds.deinit();
+
     while (true) {
         const now_ms: u64 = @intCast(std.time.milliTimestamp());
         if (now_ms >= next_frame_ms) {
@@ -104,49 +112,52 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
             next_frame_ms += tick_ms;
         }
 
-        try self.checkTimers();
+        ctx.consume_event = false;
+
+        try self.checkTimers(&ctx);
 
         while (loop.tryEvent()) |event| {
             switch (event) {
                 .key_press => |key| {
-                    const maybe_cmd = try focus_handler.handleEvent(event);
-                    if (vtk.eventConsumed(maybe_cmd)) {
-                        try self.handleCommand(maybe_cmd);
+                    try focus_handler.handleEvent(&ctx, event);
+                    if (ctx.consume_event) {
+                        try self.handleCommand(&ctx.cmds);
                     } else {
                         if (key.matches(self.quit_key.codepoint, self.quit_key.mods)) {
-                            self.quit = true;
+                            ctx.quit = true;
                         }
                         if (key.matches(vaxis.Key.tab, .{})) {
-                            const cmd = try focus_handler.focusNext();
-                            try self.handleCommand(cmd);
+                            try focus_handler.focusNext(&ctx);
+                            try self.handleCommand(&ctx.cmds);
                         }
                         if (key.matches(vaxis.Key.tab, .{ .shift = true })) {
-                            const cmd = try focus_handler.focusPrev();
-                            try self.handleCommand(cmd);
+                            try focus_handler.focusPrev(&ctx);
+                            try self.handleCommand(&ctx.cmds);
                         }
                     }
                 },
-                .focus_out => try mouse_handler.mouseExit(self),
-                .mouse => |mouse| try mouse_handler.handleMouse(self, mouse),
+                .focus_out => try mouse_handler.mouseExit(self, &ctx),
+                .mouse => |mouse| try mouse_handler.handleMouse(self, &ctx, mouse),
                 .winsize => |ws| {
                     try vx.resize(self.allocator, buffered.writer().any(), ws);
                     try buffered.flush();
-                    self.redraw = true;
+                    ctx.redraw = true;
                 },
                 else => {
-                    const maybe_cmd = try widget.handleEvent(event);
-                    try self.handleCommand(maybe_cmd);
+                    try widget.handleEvent(&ctx, event);
+                    try self.handleCommand(&ctx.cmds);
                 },
             }
         }
 
         // Check if we should quit
-        if (self.quit) return;
+        if (ctx.quit) return;
 
         // Check if we need a redraw
-        if (!self.redraw) continue;
+        if (!ctx.redraw) continue;
+        ctx.redraw = false;
+        ctx.cmds.clearRetainingCapacity();
 
-        self.redraw = false;
         _ = arena.reset(.retain_capacity);
 
         const draw_context: vtk.DrawContext = .{
@@ -188,35 +199,26 @@ fn addTick(self: *App, tick: vtk.Tick) Allocator.Error!void {
     std.sort.insertion(vtk.Tick, self.timers.items, {}, vtk.Tick.lessThan);
 }
 
-fn handleCommand(self: *App, maybe_cmd: ?vtk.Command) Allocator.Error!void {
-    const cmd = maybe_cmd orelse return;
-    switch (cmd) {
-        .redraw => self.redraw = true,
-        .tick => |tick| try self.addTick(tick),
-        .consume_event => {}, // What do we do here?
-        .batch => |cmds| {
-            for (cmds) |c| {
-                try self.handleCommand(c);
-            }
-        },
-        .quit => self.quit = true,
-        .set_mouse_shape => |shape| {
-            self.vx.setMouseShape(shape);
-            self.redraw = true;
-        },
-        .request_focus => |widget| self.wants_focus = widget,
+fn handleCommand(self: *App, cmds: *vtk.CommandList) Allocator.Error!void {
+    defer cmds.clearRetainingCapacity();
+    for (cmds.items) |cmd| {
+        switch (cmd) {
+            .tick => |tick| try self.addTick(tick),
+            .set_mouse_shape => |shape| self.vx.setMouseShape(shape),
+            .request_focus => |widget| self.wants_focus = widget,
+        }
     }
 }
 
-fn checkTimers(self: *App) anyerror!void {
+fn checkTimers(self: *App, ctx: *vtk.EventContext) anyerror!void {
     const now_ms = std.time.milliTimestamp();
 
     // timers are always sorted descending
     while (self.timers.popOrNull()) |tick| {
         if (now_ms < tick.deadline_ms)
             break;
-        const maybe_cmd = try tick.widget.handleEvent(.tick);
-        try self.handleCommand(maybe_cmd);
+        try tick.widget.handleEvent(ctx, .tick);
+        try self.handleCommand(&ctx.cmds);
     }
 }
 
@@ -236,7 +238,7 @@ const MouseHandler = struct {
         };
     }
 
-    fn handleMouse(self: *MouseHandler, app: *App, mouse: vaxis.Mouse) anyerror!void {
+    fn handleMouse(self: *MouseHandler, app: *App, ctx: *vtk.EventContext, mouse: vaxis.Mouse) anyerror!void {
         const last_frame = self.last_frame;
 
         // For mouse events we store the last frame and use that for hit testing
@@ -258,16 +260,16 @@ const MouseHandler = struct {
             var m_local = mouse;
             m_local.col = item.local.col;
             m_local.row = item.local.row;
-            const maybe_cmd = try item.widget.handleEvent(.{ .mouse = m_local });
-            try app.handleCommand(maybe_cmd);
+            try item.widget.handleEvent(ctx, .{ .mouse = m_local });
+            try app.handleCommand(&ctx.cmds);
 
             // If the event wasn't consumed, we keep passing it on
-            if (!vtk.eventConsumed(maybe_cmd)) continue;
+            if (!ctx.consume_event) continue;
 
             if (self.maybe_last_handler) |last_mouse_handler| {
                 if (!last_mouse_handler.eql(item.widget)) {
-                    const cmd = try last_mouse_handler.handleEvent(.mouse_leave);
-                    try app.handleCommand(cmd);
+                    try last_mouse_handler.handleEvent(ctx, .mouse_leave);
+                    try app.handleCommand(&ctx.cmds);
                 }
             }
             self.maybe_last_handler = item.widget;
@@ -275,13 +277,13 @@ const MouseHandler = struct {
         }
 
         // If no one handled the mouse, we assume it exited
-        return self.mouseExit(app);
+        return self.mouseExit(app, ctx);
     }
 
-    fn mouseExit(self: *MouseHandler, app: *App) anyerror!void {
+    fn mouseExit(self: *MouseHandler, app: *App, ctx: *vtk.EventContext) anyerror!void {
         if (self.maybe_last_handler) |last_handler| {
-            const cmd = try last_handler.handleEvent(.mouse_leave);
-            try app.handleCommand(cmd);
+            try last_handler.handleEvent(ctx, .mouse_leave);
+            try app.handleCommand(&ctx.cmds);
             self.maybe_last_handler = null;
         }
     }
@@ -295,8 +297,6 @@ const FocusHandler = struct {
     root: Node,
     focused: *Node,
     maybe_wants_focus: ?vtk.Widget = null,
-
-    cmds: [2]vtk.Command,
 
     const Node = struct {
         widget: Widget,
@@ -410,7 +410,6 @@ const FocusHandler = struct {
             .root = node,
             .focused = undefined,
             .arena = std.heap.ArenaAllocator.init(allocator),
-            .cmds = [_]vtk.Command{ .redraw, .redraw },
             .maybe_wants_focus = null,
         };
     }
@@ -473,46 +472,30 @@ const FocusHandler = struct {
         }
     }
 
-    fn focusNode(self: *FocusHandler, node: *Node) anyerror!?vtk.Command {
-        if (self.focused.widget.eql(node.widget)) return null;
+    fn focusNode(self: *FocusHandler, ctx: *vtk.EventContext, node: *Node) anyerror!void {
+        if (self.focused.widget.eql(node.widget)) return;
 
-        const last_focus = self.focused;
+        try self.focused.widget.handleEvent(ctx, .focus_out);
         self.focused = node;
-        const maybe_cmd1 = try last_focus.widget.handleEvent(.focus_out);
-        if (maybe_cmd1) |cmd1|
-            self.cmds[0] = cmd1;
-
-        const maybe_cmd2 = try self.focused.widget.handleEvent(.focus_in);
-        if (maybe_cmd2) |cmd2|
-            self.cmds[1] = cmd2;
-
-        if (maybe_cmd1 != null and maybe_cmd2 != null)
-            return .{ .batch = &self.cmds }
-        else if (maybe_cmd1 == null and maybe_cmd2 != null)
-            return maybe_cmd2.?
-        else if (maybe_cmd1 != null and maybe_cmd2 == null)
-            return maybe_cmd1.?
-        else
-            return null;
+        try self.focused.widget.handleEvent(ctx, .focus_in);
     }
 
     /// Focuses the next focusable widget
-    fn focusNext(self: *FocusHandler) anyerror!?vtk.Command {
-        return self.focusNode(self.focused.nextNode());
+    fn focusNext(self: *FocusHandler, ctx: *vtk.EventContext) anyerror!void {
+        return self.focusNode(ctx, self.focused.nextNode());
     }
 
     /// Focuses the previous focusable widget
-    fn focusPrev(self: *FocusHandler) anyerror!?vtk.Command {
-        return self.focusNode(self.focused.prevNode());
+    fn focusPrev(self: *FocusHandler, ctx: *vtk.EventContext) anyerror!void {
+        return self.focusNode(ctx, self.focused.prevNode());
     }
 
-    fn handleEvent(self: *FocusHandler, event: vtk.Event) anyerror!?vtk.Command {
+    fn handleEvent(self: *FocusHandler, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
         var maybe_node: ?*Node = self.focused;
         while (maybe_node) |node| {
-            const cmd = try node.widget.handleEvent(event);
-            if (vtk.eventConsumed(cmd)) return cmd;
+            try node.widget.handleEvent(ctx, event);
+            if (ctx.consume_event) return;
             maybe_node = node.parent;
         }
-        return null;
     }
 };

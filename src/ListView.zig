@@ -70,9 +70,9 @@ pub fn widget(self: *const ListView) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
+fn typeErasedEventHandler(ptr: *anyopaque, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
     const self: *ListView = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(event);
+    return self.handleEvent(ctx, event);
 }
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -80,18 +80,16 @@ fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     return self.draw(ctx);
 }
 
-pub fn handleEvent(self: *ListView, event: vtk.Event) anyerror!?vtk.Command {
+pub fn handleEvent(self: *ListView, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
     switch (event) {
         .mouse => |mouse| {
             if (mouse.button == .wheel_up) {
                 if (self.scroll.linesUp(self.wheel_scroll))
-                    return vtk.consumeAndRedraw();
-                return null;
+                    ctx.consumeAndRedraw();
             }
             if (mouse.button == .wheel_down) {
                 if (self.scroll.linesDown(self.wheel_scroll))
-                    return vtk.consumeAndRedraw();
-                return null;
+                    ctx.consumeAndRedraw();
             }
         },
         .key_press => |key| {
@@ -99,35 +97,34 @@ pub fn handleEvent(self: *ListView, event: vtk.Event) anyerror!?vtk.Command {
                 key.matches('n', .{ .ctrl = true }) or
                 key.matches(vaxis.Key.down, .{}))
             {
-                return self.nextItem();
+                return self.nextItem(ctx);
             }
             if (key.matches('k', .{}) or
                 key.matches('p', .{ .ctrl = true }) or
                 key.matches(vaxis.Key.up, .{}))
             {
-                return self.prevItem();
+                return self.prevItem(ctx);
             }
             if (key.matches(vaxis.Key.escape, .{})) {
                 self.ensureScroll();
-                return vtk.consumeAndRedraw();
+                return ctx.consumeAndRedraw();
             }
 
             // All other keypresses go to our focused child
             switch (self.children) {
                 .slice => |slice| {
                     const child = slice[self.cursor];
-                    return child.handleEvent(event);
+                    return child.handleEvent(ctx, event);
                 },
                 .builder => |builder| {
                     if (builder.itemAtIdx(self.cursor, self.cursor)) |child| {
-                        return child.handleEvent(event);
+                        return child.handleEvent(ctx, event);
                     }
                 },
             }
         },
         else => {},
     }
-    return null;
 }
 
 pub fn draw(self: *ListView, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -143,11 +140,11 @@ pub fn draw(self: *ListView, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
     }
 }
 
-pub fn nextItem(self: *ListView) ?vtk.Command {
+pub fn nextItem(self: *ListView, ctx: *vtk.EventContext) void {
     // If we have a count, we can handle this directly
     if (self.item_count) |count| {
         if (self.cursor >= count - 1) {
-            return .consume_event;
+            return ctx.consumeEvent();
         }
         self.cursor += 1;
     } else {
@@ -156,7 +153,7 @@ pub fn nextItem(self: *ListView) ?vtk.Command {
                 self.item_count = @intCast(slice.len);
                 // If we are already at the end, don't do anything
                 if (self.cursor == slice.len - 1) {
-                    return .consume_event;
+                    return ctx.consumeEvent();
                 }
                 // Advance the cursor
                 self.cursor += 1;
@@ -172,19 +169,19 @@ pub fn nextItem(self: *ListView) ?vtk.Command {
                 }
                 // If we didn't change state, we don't redraw
                 if (self.cursor == prev) {
-                    return .consume_event;
+                    return ctx.consumeEvent();
                 }
             },
         }
     }
     // Reset scroll
     self.ensureScroll();
-    return vtk.consumeAndRedraw();
+    ctx.consumeAndRedraw();
 }
 
-pub fn prevItem(self: *ListView) ?vtk.Command {
+pub fn prevItem(self: *ListView, ctx: *vtk.EventContext) void {
     if (self.cursor == 0) {
-        return .consume_event;
+        return ctx.consumeEvent();
     }
 
     if (self.item_count) |count| {
@@ -207,7 +204,7 @@ pub fn prevItem(self: *ListView) ?vtk.Command {
                 }
                 // If we didn't change state, we don't redraw
                 if (self.cursor == prev) {
-                    return .consume_event;
+                    return ctx.consumeEvent();
                 }
             },
         }
@@ -215,7 +212,7 @@ pub fn prevItem(self: *ListView) ?vtk.Command {
 
     // Reset scroll
     self.ensureScroll();
-    return vtk.consumeAndRedraw();
+    return ctx.consumeAndRedraw();
 }
 
 // Only call when cursor state has changed, or we want to ensure the cursored item is in view

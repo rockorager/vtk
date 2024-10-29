@@ -21,7 +21,7 @@ const Model = struct {
         };
     }
 
-    fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
+    fn typeErasedEventHandler(ptr: *anyopaque, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
         const self: *Model = @ptrCast(@alignCast(ptr));
         switch (event) {
             .init => {
@@ -33,16 +33,20 @@ const Model = struct {
                     try spans.append(span);
                     try self.filtered.append(.{ .text = spans.items });
                 }
-                return .{ .request_focus = self.text_field.widget() };
+
+                return ctx.requestFocus(self.text_field.widget());
             },
             .key_press => |key| {
-                if (key.matches('c', .{ .ctrl = true })) return .quit;
-                return self.list_view.handleEvent(event);
+                if (key.matches('c', .{ .ctrl = true })) {
+                    ctx.quit = true;
+                    return;
+                }
+                return self.list_view.handleEvent(ctx, event);
             },
             .focus_in => {
-                return .{ .request_focus = self.text_field.widget() };
+                return ctx.requestFocus(self.text_field.widget());
             },
-            else => return null,
+            else => {},
         }
     }
 
@@ -95,8 +99,8 @@ const Model = struct {
         return self.filtered.items[idx].widget();
     }
 
-    fn onChange(maybe_ptr: ?*anyopaque, str: []const u8) anyerror!?vtk.Command {
-        const ptr = maybe_ptr orelse return null;
+    fn onChange(maybe_ptr: ?*anyopaque, _: *vtk.EventContext, str: []const u8) anyerror!void {
+        const ptr = maybe_ptr orelse return;
         const self: *Model = @ptrCast(@alignCast(ptr));
         self.filtered.clearAndFree();
         _ = self.arena.reset(.free_all);
@@ -137,11 +141,10 @@ const Model = struct {
         self.list_view.scroll.top = 0;
         self.list_view.scroll.offset = 0;
         self.list_view.cursor = 0;
-        return null;
     }
 
-    fn onSubmit(maybe_ptr: ?*anyopaque, _: []const u8) anyerror!?vtk.Command {
-        const ptr = maybe_ptr orelse return null;
+    fn onSubmit(maybe_ptr: ?*anyopaque, ctx: *vtk.EventContext, _: []const u8) anyerror!void {
+        const ptr = maybe_ptr orelse return;
         const self: *Model = @ptrCast(@alignCast(ptr));
         if (self.list_view.cursor < self.filtered.items.len) {
             const selected = self.filtered.items[self.list_view.cursor];
@@ -152,7 +155,7 @@ const Model = struct {
             }
             self.result = result.items;
         }
-        return .quit;
+        ctx.quit = true;
     }
 };
 

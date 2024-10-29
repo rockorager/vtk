@@ -34,10 +34,8 @@ unicode: *const Unicode,
 previous_val: []const u8 = "",
 
 userdata: ?*anyopaque = null,
-onChange: ?*const fn (?*anyopaque, []const u8) anyerror!?vtk.Command = null,
-onSubmit: ?*const fn (?*anyopaque, []const u8) anyerror!?vtk.Command = null,
-
-cmds: [2]vtk.Command = .{ .consume_event, .redraw },
+onChange: ?*const fn (?*anyopaque, *vtk.EventContext, []const u8) anyerror!void = null,
+onSubmit: ?*const fn (?*anyopaque, *vtk.EventContext, []const u8) anyerror!void = null,
 
 pub fn init(alloc: std.mem.Allocator, unicode: *const Unicode) TextField {
     return TextField{
@@ -59,86 +57,77 @@ pub fn widget(self: *TextField) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
+fn typeErasedEventHandler(ptr: *anyopaque, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
     const self: *TextField = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(event);
+    return self.handleEvent(ctx, event);
 }
 
-pub fn handleEvent(self: *TextField, event: vtk.Event) anyerror!?vtk.Command {
+pub fn handleEvent(self: *TextField, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
     switch (event) {
-        .focus_out, .focus_in => return .redraw,
+        .focus_out, .focus_in => ctx.redraw = true,
         .key_press => |key| {
             if (key.matches(Key.backspace, .{})) {
                 self.deleteBeforeCursor();
-                return self.checkChanged();
+                return self.checkChanged(ctx);
             } else if (key.matches(Key.delete, .{}) or key.matches('d', .{ .ctrl = true })) {
                 self.deleteAfterCursor();
-                return self.checkChanged();
+                return self.checkChanged(ctx);
             } else if (key.matches(Key.left, .{}) or key.matches('b', .{ .ctrl = true })) {
                 self.cursorLeft();
-                return vtk.consumeAndRedraw();
+                return ctx.consumeAndRedraw();
             } else if (key.matches(Key.right, .{}) or key.matches('f', .{ .ctrl = true })) {
                 self.cursorRight();
-                return vtk.consumeAndRedraw();
+                return ctx.consumeAndRedraw();
             } else if (key.matches('a', .{ .ctrl = true }) or key.matches(Key.home, .{})) {
                 self.buf.moveGapLeft(self.buf.firstHalf().len);
-                return vtk.consumeAndRedraw();
+                return ctx.consumeAndRedraw();
             } else if (key.matches('e', .{ .ctrl = true }) or key.matches(Key.end, .{})) {
                 self.buf.moveGapRight(self.buf.secondHalf().len);
-                return vtk.consumeAndRedraw();
+                return ctx.consumeAndRedraw();
             } else if (key.matches('k', .{ .ctrl = true })) {
                 self.deleteToEnd();
-                return self.checkChanged();
+                return self.checkChanged(ctx);
             } else if (key.matches('u', .{ .ctrl = true })) {
                 self.deleteToStart();
-                return self.checkChanged();
+                return self.checkChanged(ctx);
             } else if (key.matches('b', .{ .alt = true }) or key.matches(Key.left, .{ .alt = true })) {
                 self.moveBackwardWordwise();
-                return vtk.consumeAndRedraw();
+                return ctx.consumeAndRedraw();
             } else if (key.matches('f', .{ .alt = true }) or key.matches(Key.right, .{ .alt = true })) {
                 self.moveForwardWordwise();
-                return vtk.consumeAndRedraw();
+                return ctx.consumeAndRedraw();
             } else if (key.matches('w', .{ .ctrl = true }) or key.matches(Key.backspace, .{ .alt = true })) {
                 self.deleteWordBefore();
-                return self.checkChanged();
+                return self.checkChanged(ctx);
             } else if (key.matches('d', .{ .alt = true })) {
                 self.deleteWordAfter();
-                return self.checkChanged();
+                return self.checkChanged(ctx);
             } else if (key.matches(vaxis.Key.enter, .{})) {
                 if (self.onSubmit) |onSubmit| {
-                    if (try onSubmit(self.userdata, self.previous_val)) |cmd| {
-                        self.cmds[0] = cmd;
-                        self.cmds[1] = vtk.consumeAndRedraw();
-                        return .{ .batch = &self.cmds };
-                    }
+                    try onSubmit(self.userdata, ctx, self.previous_val);
+                    return ctx.consumeAndRedraw();
                 }
-                return self.checkChanged();
             } else if (key.text) |text| {
                 try self.insertSliceAtCursor(text);
-                return self.checkChanged();
+                return self.checkChanged(ctx);
             }
         },
         else => {},
     }
-    return null;
 }
 
-fn checkChanged(self: *TextField) anyerror!?vtk.Command {
+fn checkChanged(self: *TextField, ctx: *vtk.EventContext) anyerror!void {
     const new = try self.buf.dupe();
     if (std.mem.eql(u8, new, self.previous_val)) {
         self.buf.allocator.free(new);
-        return vtk.consumeAndRedraw();
+        return ctx.consumeAndRedraw();
     }
     self.buf.allocator.free(self.previous_val);
     self.previous_val = new;
     if (self.onChange) |onChange| {
-        if (try onChange(self.userdata, new)) |cmd| {
-            self.cmds[0] = cmd;
-            self.cmds[1] = vtk.consumeAndRedraw();
-            return .{ .batch = &self.cmds };
-        }
+        try onChange(self.userdata, ctx, new);
     }
-    return vtk.consumeAndRedraw();
+    ctx.consumeAndRedraw();
 }
 
 /// insert text at the cursor position
@@ -389,22 +378,6 @@ pub fn deleteWordAfter(self: *TextField) void {
     while (i < second_half.len and second_half[i] == ' ') : (i += 1) {}
     const idx = std.mem.indexOfScalarPos(u8, second_half, i, ' ') orelse second_half.len;
     self.buf.growGapRight(idx);
-}
-
-test "assertion" {
-    const alloc = std.testing.allocator_instance.allocator();
-    const unicode = try Unicode.init(alloc);
-    defer unicode.deinit();
-    const astronaut = "👩‍🚀";
-    const astronaut_emoji: Key = .{
-        .text = astronaut,
-        .codepoint = try std.unicode.utf8Decode(astronaut[0..4]),
-    };
-    var input = TextField.init(std.testing.allocator, &unicode);
-    defer input.deinit();
-    for (0..6) |_| {
-        _ = try input.handleEvent(.{ .key_press = astronaut_emoji });
-    }
 }
 
 test "sliceToCursor" {

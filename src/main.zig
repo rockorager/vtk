@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 const testing = std.testing;
 
 const Allocator = std.mem.Allocator;
+pub const CommandList = std.ArrayList(Command);
 
 pub const App = @import("App.zig");
 
@@ -30,8 +31,6 @@ pub const RichText = @import("RichText.zig");
 pub const Text = @import("Text.zig");
 
 const log = std.log.scoped(.vtk);
-
-const consume_and_redraw = [2]Command{ .consume_event, .redraw };
 
 pub const AppEvent = struct {
     name: []const u8,
@@ -76,46 +75,56 @@ pub const Tick = struct {
 pub const Command = union(enum) {
     /// Callback the event with a tick event at the specified deadlline
     tick: Tick,
-    /// The event was handled, do not pass it on
-    consume_event,
-    /// The event produced multiple commands. The lifetime of the slice must be at least one frame
-    batch: []const Command,
-    /// Tells the event loop to redraw the UI
-    redraw,
-    /// Quit the application
-    quit,
     /// Change the mouse shape. This also has an implicit redraw
     set_mouse_shape: vaxis.Mouse.Shape,
     /// Request that this widget receives focus
     request_focus: Widget,
 };
 
-/// Returns true if the Command contains a .consume_event event
-pub fn eventConsumed(maybe_cmd: ?Command) bool {
-    const cmd = maybe_cmd orelse return false;
-    switch (cmd) {
-        .consume_event => return true,
-        .batch => |cmds| {
-            for (cmds) |c| {
-                if (eventConsumed(c)) return true;
-            }
-            return false;
-        },
+pub const EventContext = struct {
+    phase: Phase = .at_target,
+    cmds: CommandList,
 
-        // The rest are false
-        .tick,
-        .redraw,
-        .quit,
-        .set_mouse_shape,
-        .request_focus,
-        => return false,
+    /// The event was handled, do not pass it on
+    consume_event: bool = false,
+    /// Tells the event loop to redraw the UI
+    redraw: bool = true,
+    /// Quit the application
+    quit: bool = false,
+
+    pub const Phase = enum {
+        // TODO: Capturing phase
+        // capturing,
+        at_target,
+        bubbling,
+    };
+
+    pub fn addCmd(self: *EventContext, cmd: Command) Allocator.Error!void {
+        try self.cmds.append(cmd);
     }
-}
 
-/// Returns a batch command composed of a consume_event and a redraw command
-pub fn consumeAndRedraw() Command {
-    return .{ .batch = &consume_and_redraw };
-}
+    pub fn tick(self: *EventContext, ms: u32, widget: Widget) Allocator.Error!void {
+        try self.addCmd(Tick.in(ms, widget));
+    }
+
+    pub fn consumeAndRedraw(self: *EventContext) void {
+        self.consume_event = true;
+        self.redraw = true;
+    }
+
+    pub fn consumeEvent(self: *EventContext) void {
+        self.consume_event = true;
+    }
+
+    pub fn setMouseShape(self: *EventContext, shape: vaxis.Mouse.Shape) Allocator.Error!void {
+        try self.addCmd(.{ .set_mouse_shape = shape });
+        self.redraw = true;
+    }
+
+    pub fn requestFocus(self: *EventContext, widget: Widget) Allocator.Error!void {
+        try self.addCmd(.{ .request_focus = widget });
+    }
+};
 
 pub const DrawContext = struct {
     // Allocator backed by an arena. Widgets do not need to free their own resources, they will be
@@ -194,11 +203,11 @@ pub const MaxSize = struct {
 /// The Widget interface
 pub const Widget = struct {
     userdata: *anyopaque,
-    eventHandler: *const fn (userdata: *anyopaque, event: Event) anyerror!?Command,
+    eventHandler: *const fn (userdata: *anyopaque, ctx: *EventContext, event: Event) anyerror!void,
     drawFn: *const fn (userdata: *anyopaque, ctx: DrawContext) Allocator.Error!Surface,
 
-    pub fn handleEvent(self: Widget, event: Event) anyerror!?Command {
-        return self.eventHandler(self.userdata, event);
+    pub fn handleEvent(self: Widget, ctx: *EventContext, event: Event) anyerror!void {
+        return self.eventHandler(self.userdata, ctx, event);
     }
 
     pub fn draw(self: Widget, ctx: DrawContext) Allocator.Error!Surface {
@@ -434,9 +443,7 @@ pub const Window = struct {
 };
 
 /// A noop event handler for widgets which don't require any event handling
-pub fn noopEventHandler(_: *anyopaque, _: Event) anyerror!?Command {
-    return null;
-}
+pub fn noopEventHandler(_: *anyopaque, _: *EventContext, _: Event) anyerror!void {}
 
 test {
     std.testing.refAllDecls(@This());

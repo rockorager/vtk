@@ -14,15 +14,14 @@ const Model = struct {
         };
     }
 
-    fn typeErasedEventHandler(_: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
+    fn typeErasedEventHandler(_: *anyopaque, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
         switch (event) {
             .key_press => |key| {
-                if (key.matches('c', .{ .ctrl = true })) return .quit;
-                return null;
+                if (key.matches('c', .{ .ctrl = true })) {
+                    ctx.quit = true;
+                }
             },
-            .mouse => return null,
-            .focus_in => return null,
-            else => return null,
+            else => {},
         }
     }
 
@@ -57,11 +56,11 @@ const Model = struct {
         return surface;
     }
 
-    fn onClick(maybe_ptr: ?*anyopaque) anyerror!?vtk.Command {
-        const ptr = maybe_ptr orelse return null;
+    fn onClick(maybe_ptr: ?*anyopaque, ctx: *vtk.EventContext) anyerror!void {
+        const ptr = maybe_ptr orelse return;
         const self: *Model = @ptrCast(@alignCast(ptr));
         self.count +|= 1;
-        return .redraw;
+        return ctx.consumeAndRedraw();
     }
 };
 

@@ -12,7 +12,7 @@ const Button = @This();
 
 // User supplied values
 label: []const u8,
-onClick: *const fn (?*anyopaque) anyerror!?vtk.Command,
+onClick: *const fn (?*anyopaque, ctx: *vtk.EventContext) anyerror!void,
 userdata: ?*anyopaque = null,
 
 // Styles
@@ -28,9 +28,6 @@ mouse_down: bool = false,
 has_mouse: bool = false,
 focused: bool = false,
 
-// Preallocated batch command
-cmds: [2]vtk.Command = [_]vtk.Command{ .consume_event, .consume_event },
-
 pub fn widget(self: *Button) vtk.Widget {
     return .{
         .userdata = self,
@@ -39,54 +36,52 @@ pub fn widget(self: *Button) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
+fn typeErasedEventHandler(ptr: *anyopaque, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
     const self: *Button = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(event);
+    return self.handleEvent(ctx, event);
 }
 
-pub fn handleEvent(self: *Button, event: vtk.Event) anyerror!?vtk.Command {
+pub fn handleEvent(self: *Button, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
     switch (event) {
         .key_press => |key| {
             if (key.matches(vaxis.Key.enter, .{})) {
-                return self.doClick();
+                return self.doClick(ctx);
             }
         },
         .mouse => |mouse| {
             if (self.mouse_down and mouse.type == .release) {
                 self.mouse_down = false;
-                return self.doClick();
+                return self.doClick(ctx);
             }
             if (mouse.type == .press and mouse.button == .left) {
                 self.mouse_down = true;
-                return vtk.consumeAndRedraw();
+                return ctx.consumeAndRedraw();
             }
             if (!self.has_mouse) {
                 self.has_mouse = true;
 
                 // implicit redraw
-                self.cmds[0] = .{ .set_mouse_shape = .pointer };
-                self.cmds[1] = .consume_event;
-                return .{ .batch = &self.cmds };
+                try ctx.setMouseShape(.pointer);
+                return ctx.consumeAndRedraw();
             }
-            return .consume_event;
+            return ctx.consumeEvent();
         },
         .mouse_leave => {
             self.has_mouse = false;
             self.mouse_down = false;
             // implicit redraw
-            return .{ .set_mouse_shape = .default };
+            try ctx.setMouseShape(.default);
         },
         .focus_in => {
             self.focused = true;
-            return .redraw;
+            ctx.redraw = true;
         },
         .focus_out => {
             self.focused = false;
-            return .redraw;
+            ctx.redraw = true;
         },
         else => {},
     }
-    return null;
 }
 
 fn typeErasedDrawFn(ptr: *anyopaque, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
@@ -112,43 +107,27 @@ pub fn draw(self: *Button, ctx: vtk.DrawContext) Allocator.Error!vtk.Surface {
 
     const center: Center = .{ .child = text.widget() };
     const surf = try center.draw(ctx);
-    for (0..surf.buffer.len) |i| {
-        var cell = surf.buffer[i];
-        cell.style = style;
-        cell.default = false;
-        surf.buffer[i] = cell;
-    }
 
-    // Masquerade as Center
-    return .{
-        .size = surf.size,
-        .widget = self.widget(),
-        .buffer = surf.buffer,
-        .children = surf.children,
-
-        // Input props
-        .handles_mouse = true,
-        .focusable = true,
-    };
+    var button_surf = try vtk.Surface.initWithChildren(ctx.arena, self.widget(), surf.size, surf.children);
+    @memset(button_surf.buffer, .{ .style = style });
+    button_surf.handles_mouse = true;
+    button_surf.focusable = true;
+    return button_surf;
 }
 
-fn doClick(self: *Button) anyerror!?vtk.Command {
-    if (try self.onClick(self.userdata)) |cmd| {
-        self.cmds[0] = cmd;
-        self.cmds[1] = vtk.consumeAndRedraw();
-        return .{ .batch = &self.cmds };
-    }
-    return .consume_event;
+fn doClick(self: *Button, ctx: *vtk.EventContext) anyerror!void {
+    try self.onClick(self.userdata, ctx);
+    ctx.consume_event = true;
 }
 
 test Button {
     const Foo = struct {
         count: u8,
 
-        fn onClick(ptr: ?*anyopaque) anyerror!?vtk.Command {
+        fn onClick(ptr: ?*anyopaque, ctx: *vtk.EventContext) anyerror!void {
             const foo: *@This() = @ptrCast(@alignCast(ptr));
             foo.count +|= 1;
-            return null;
+            ctx.consumeAndRedraw();
         }
     };
 

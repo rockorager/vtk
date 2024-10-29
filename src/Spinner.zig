@@ -14,9 +14,6 @@ count: std.atomic.Value(u16) = .{ .raw = 0 },
 style: vaxis.Style = .{},
 /// The frame index
 frame: u4 = 0,
-/// When we rearm the timer, we return a Tick and a redraw command. We statically allocate these up
-/// front so we don't need an allocator
-rearm: [2]vtk.Command = [_]vtk.Command{ .redraw, .redraw },
 
 /// Start, or add one, to the spinner counter. Thread safe.
 pub fn start(self: *Spinner) ?vtk.Command {
@@ -40,26 +37,25 @@ pub fn widget(self: *Spinner) vtk.Widget {
     };
 }
 
-fn typeErasedEventHandler(ptr: *anyopaque, event: vtk.Event) anyerror!?vtk.Command {
+fn typeErasedEventHandler(ptr: *anyopaque, ctx: *vtk.EventContext, event: vtk.Event) anyerror!void {
     const self: *Spinner = @ptrCast(@alignCast(ptr));
-    return self.handleEvent(event);
+    return self.handleEvent(ctx, event);
 }
 
-pub fn handleEvent(self: *Spinner, event: vtk.Event) ?vtk.Command {
+pub fn handleEvent(self: *Spinner, ctx: *vtk.EventContext, event: vtk.Event) Allocator.Error!void {
     switch (event) {
         .tick => {
             const count = self.count.load(.unordered);
 
-            if (count == 0) return null;
+            if (count == 0) return;
             // Update frame
             self.frame += 1;
             if (self.frame >= frames.len) self.frame = 0;
 
             // Update rearm
-            self.rearm[0] = vtk.Tick.in(time_lapse, self.widget());
-            return .{ .batch = &self.rearm };
+            try ctx.tick(time_lapse, self.widget());
         },
-        else => return null,
+        else => {},
     }
 }
 
@@ -98,7 +94,8 @@ test Spinner {
     const spinner_widget = spinner.widget();
 
     // Start the spinner. This (maybe) returns a Tick command to schedule the next frame. If the
-    // spinner is already running, no command is returned. Calling start is thread safe
+    // spinner is already running, no command is returned. Calling start is thread safe. The
+    // returned command can be added to an EventContext to schedule the frame
     const maybe_cmd = spinner.start();
     try std.testing.expect(maybe_cmd != null);
     try std.testing.expect(maybe_cmd.? == .tick);
@@ -109,9 +106,13 @@ test Spinner {
     try std.testing.expect(maybe_cmd2 == null);
     try std.testing.expectEqual(2, spinner.count.load(.unordered));
 
+    // We are about to deliver the tick to the widget. We need an EventContext (the engine will
+    // provide this)
+    var ctx: vtk.EventContext = .{ .cmds = vtk.CommandList.init(arena.allocator()) };
+
     // The event loop handles the tick event and calls us back with a .tick event. If we should keep
-    // running, we will return a new tick event
-    _ = try spinner_widget.handleEvent(.tick);
+    // running, we will add a new tick event
+    try spinner_widget.handleEvent(&ctx, .tick);
 
     // Receiving a .tick advances the frame
     try std.testing.expectEqual(1, spinner.frame);
