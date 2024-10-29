@@ -91,9 +91,67 @@ pub fn draw(self: *const FlexRow, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
     };
 }
 
-test "FlexRow: validate widget interface" {
-    var flex: FlexRow = .{ .children = &.{} };
-    _ = flex.widget();
+test FlexRow {
+    // Create child widgets
+    const Text = @import("Text.zig");
+    // Will be height=1, width=3
+    const abc: Text = .{ .text = "abc" };
+    const def: Text = .{ .text = "def" };
+    const ghi: Text = .{ .text = "ghi" };
+    const jklmno: Text = .{ .text = "jkl\nmno" };
+
+    // Create the flex row
+    const flex_row: FlexRow = .{
+        .children = &.{
+            .{ .widget = abc.widget(), .flex = 0 }, // flex=0 means we are our inherent size
+            .{ .widget = def.widget(), .flex = 1 },
+            .{ .widget = ghi.widget(), .flex = 1 },
+            .{ .widget = jklmno.widget(), .flex = 1 },
+        },
+    };
+
+    // Boiler plate draw context
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const ucd = try vaxis.Unicode.init(arena.allocator());
+    vtk.DrawContext.init(&ucd, .unicode);
+
+    const flex_widget = flex_row.widget();
+    const ctx: vtk.DrawContext = .{
+        .arena = arena.allocator(),
+        .min = .{},
+        .max = .{ .width = 16, .height = 16 },
+    };
+
+    const surface = try flex_widget.draw(ctx);
+    // FlexRow expands to max width and tallest child
+    try std.testing.expectEqual(16, surface.size.width);
+    try std.testing.expectEqual(2, surface.size.height);
+    // We have four children
+    try std.testing.expectEqual(4, surface.children.len);
+
+    // We will track the column we are on to confirm the origins
+    var col: u16 = 0;
+    // First child has flex=0, it should be it's inherent width
+    try std.testing.expectEqual(3, surface.children[0].surface.size.width);
+    try std.testing.expectEqual(col, surface.children[0].origin.col);
+    // Add the child height each time
+    col += surface.children[0].surface.size.width;
+    // Let's do some math
+    // - We have 4 children to fit into 16 cols. All children will be 3 wide for a total width of 12
+    // - The first child is 3 cols and no flex. The rest of the width gets distributed evenly among
+    //   the remaining 3 children. The remainder width is 16 - 12 = 4, so each child should get 4 /
+    //   3 = 1 extra cols, and the last will receive the remainder
+    try std.testing.expectEqual(1 + 3, surface.children[1].surface.size.width);
+    try std.testing.expectEqual(col, surface.children[1].origin.col);
+    col += surface.children[1].surface.size.width;
+
+    try std.testing.expectEqual(1 + 3, surface.children[2].surface.size.width);
+    try std.testing.expectEqual(col, surface.children[2].origin.col);
+    col += surface.children[2].surface.size.width;
+
+    try std.testing.expectEqual(1 + 3 + 1, surface.children[3].surface.size.width);
+    try std.testing.expectEqual(col, surface.children[3].origin.col);
 }
 
 test "refAllDecls" {
