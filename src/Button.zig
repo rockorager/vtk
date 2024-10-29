@@ -121,6 +121,7 @@ fn doClick(self: *Button, ctx: *vtk.EventContext) anyerror!void {
 }
 
 test Button {
+    // Create some object which reacts to a button press
     const Foo = struct {
         count: u8,
 
@@ -130,7 +131,6 @@ test Button {
             ctx.consumeAndRedraw();
         }
     };
-
     var foo: Foo = .{ .count = 0 };
 
     var button: Button = .{
@@ -139,7 +139,76 @@ test Button {
         .userdata = &foo,
     };
 
-    _ = button.widget();
+    // Event handlers need a context
+    var ctx: vtk.EventContext = .{
+        .cmds = std.ArrayList(vtk.Command).init(std.testing.allocator),
+    };
+    defer ctx.cmds.deinit();
+
+    // Get the widget interface
+    const b_widget = button.widget();
+
+    // Create a synthetic mouse event
+    var mouse_event: vaxis.Mouse = .{
+        .col = 0,
+        .row = 0,
+        .mods = .{},
+        .button = .left,
+        .type = .press,
+    };
+    // Send the button a mouse press event
+    try b_widget.handleEvent(&ctx, .{ .mouse = mouse_event });
+
+    // A press alone doesn't trigger onClick
+    try std.testing.expectEqual(0, foo.count);
+
+    // Send the button a mouse release event. The onClick handler is called
+    mouse_event.type = .release;
+    try b_widget.handleEvent(&ctx, .{ .mouse = mouse_event });
+    try std.testing.expectEqual(1, foo.count);
+
+    // Send it another press
+    mouse_event.type = .press;
+    try b_widget.handleEvent(&ctx, .{ .mouse = mouse_event });
+
+    // Now the mouse leaves
+    try b_widget.handleEvent(&ctx, .mouse_leave);
+
+    // Then it comes back. We don't know it but the button was pressed outside of our widget. We
+    // receie the release event
+    mouse_event.type = .release;
+    try b_widget.handleEvent(&ctx, .{ .mouse = mouse_event });
+
+    // But we didn't have the press registered, so we don't call onClick
+    try std.testing.expectEqual(1, foo.count);
+
+    // Now we receive an enter keypress. This also triggers the onClick handler
+    try b_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = vaxis.Key.enter } });
+    try std.testing.expectEqual(2, foo.count);
+
+    // Now we draw the button. Set up our context with some unicode data
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const ucd = try vaxis.Unicode.init(arena.allocator());
+    vtk.DrawContext.init(&ucd, .unicode);
+
+    const draw_ctx: vtk.DrawContext = .{
+        .arena = arena.allocator(),
+        .min = .{},
+        .max = .{ .width = 13, .height = 3 },
+    };
+    const surface = try b_widget.draw(draw_ctx);
+
+    // The button should fill the available space.
+    try std.testing.expectEqual(surface.size.width, draw_ctx.max.width.?);
+    try std.testing.expectEqual(surface.size.height, draw_ctx.max.height.?);
+
+    // It should have one child, the label
+    try std.testing.expectEqual(1, surface.children.len);
+
+    // The label should be centered
+    try std.testing.expectEqual(1, surface.children[0].origin.row);
+    try std.testing.expectEqual(1, surface.children[0].origin.col);
 }
 
 test "refAllDecls" {
