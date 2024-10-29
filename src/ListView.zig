@@ -510,3 +510,7 @@ test "ListView: validate widget interface" {
     var flex: ListView = .{ .children = .{ .slice = &.{} } };
     _ = flex.widget();
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

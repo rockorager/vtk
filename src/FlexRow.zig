@@ -95,3 +95,7 @@ test "FlexRow: validate widget interface" {
     var flex: FlexRow = .{ .children = &.{} };
     _ = flex.widget();
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

@@ -334,3 +334,7 @@ test "RichText satisfies widget interface" {
     const text: RichText = .{ .text = &.{.{ .text = "Hello, World" }} };
     _ = text.widget();
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

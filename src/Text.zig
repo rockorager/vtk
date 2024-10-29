@@ -460,3 +460,7 @@ test "Text satisfies widget interface" {
     const text: Text = .{ .text = "test" };
     _ = text.widget();
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

@@ -49,3 +49,7 @@ test "SizedBox satisfies Widget interface" {
     const box: SizedBox = .{ .child = undefined, .size = .{ .width = 0, .height = 0 } };
     _ = box.widget();
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

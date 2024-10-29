@@ -129,3 +129,7 @@ test Spinner {
     spinner.stop();
     try std.testing.expectEqual(0, spinner.count.load(.unordered));
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

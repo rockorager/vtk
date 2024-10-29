@@ -97,3 +97,7 @@ test "FlexColumn: validate widget interface" {
     var flex: FlexColumn = .{ .children = &.{} };
     _ = flex.widget();
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

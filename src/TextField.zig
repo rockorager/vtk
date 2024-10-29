@@ -565,3 +565,7 @@ test "TextField satisfies widget interface" {
     var text: TextField = undefined;
     _ = text.widget();
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

@@ -163,6 +163,6 @@ test Button {
     _ = button.widget();
 }
 
-test "Button.zig: refAllDecls" {
+test "refAllDecls" {
     std.testing.refAllDecls(@This());
 }

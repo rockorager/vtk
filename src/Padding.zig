@@ -114,3 +114,7 @@ test "Padding satisfies Widget interface" {
     const padding: Padding = .{ .child = undefined, .padding = .{} };
     _ = padding.widget();
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}

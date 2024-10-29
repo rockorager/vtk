@@ -54,3 +54,7 @@ pub fn draw(self: *const Center, ctx: vtk.DrawContext) Allocator.Error!vtk.Surfa
         .children = children,
     };
 }
+
+test "refAllDecls" {
+    std.testing.refAllDecls(@This());
+}
