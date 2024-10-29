@@ -106,9 +106,41 @@ pub fn draw(self: *const Padding, ctx: vtk.DrawContext) Allocator.Error!vtk.Surf
     };
 }
 
-test "Padding satisfies Widget interface" {
-    const padding: Padding = .{ .child = undefined, .padding = .{} };
-    _ = padding.widget();
+test Padding {
+    const Text = @import("Text.zig");
+    // Will be height=1, width=3
+    const text: Text = .{ .text = "abc" };
+
+    const padding: Padding = .{
+        .child = text.widget(),
+        .padding = horizontal(1),
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const ucd = try vaxis.Unicode.init(arena.allocator());
+    vtk.DrawContext.init(&ucd, .unicode);
+
+    // Center expands to the max size. It must therefore have non-null max width and max height.
+    // These values are asserted in draw
+    const ctx: vtk.DrawContext = .{
+        .arena = arena.allocator(),
+        .min = .{},
+        .max = .{ .width = 10, .height = 10 },
+    };
+
+    const pad_widget = padding.widget();
+
+    const surface = try pad_widget.draw(ctx);
+    // Padding does not produce any drawable cells
+    try std.testing.expectEqual(0, surface.buffer.len);
+    // Padding has 1 child
+    try std.testing.expectEqual(1, surface.children.len);
+    const child = surface.children[0];
+    // Padding is the child size + padding
+    try std.testing.expectEqual(child.surface.size.width + 2, surface.size.width);
+    try std.testing.expectEqual(0, child.origin.row);
+    try std.testing.expectEqual(1, child.origin.col);
 }
 
 test "refAllDecls" {
