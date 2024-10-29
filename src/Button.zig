@@ -31,18 +31,6 @@ focused: bool = false,
 // Preallocated batch command
 cmds: [2]vtk.Command = [_]vtk.Command{ .consume_event, .consume_event },
 
-pub fn init(
-    label: []const u8,
-    userdata: ?*anyopaque,
-    on_click: *const fn (?*anyopaque) void,
-) Button {
-    return .{
-        .label = label,
-        .userdata = userdata,
-        .on_click = on_click,
-    };
-}
-
 pub fn widget(self: *Button) vtk.Widget {
     return .{
         .userdata = self,
@@ -173,4 +161,8 @@ test Button {
     };
 
     _ = button.widget();
+}
+
+test "Button.zig: refAllDecls" {
+    std.testing.refAllDecls(@This());
 }
