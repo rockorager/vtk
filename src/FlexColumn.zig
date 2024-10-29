@@ -93,9 +93,68 @@ pub fn draw(self: *const FlexColumn, ctx: vtk.DrawContext) Allocator.Error!vtk.S
     };
 }
 
-test "FlexColumn: validate widget interface" {
-    var flex: FlexColumn = .{ .children = &.{} };
-    _ = flex.widget();
+test FlexColumn {
+    // Create child widgets
+    const Text = @import("Text.zig");
+    // Will be height=1, width=3
+    const abc: Text = .{ .text = "abc" };
+    const def: Text = .{ .text = "def" };
+    const ghi: Text = .{ .text = "ghi" };
+    const jklmno: Text = .{ .text = "jkl\nmno" };
+
+    // Create the flex column
+    const flex_column: FlexColumn = .{
+        .children = &.{
+            .{ .widget = abc.widget(), .flex = 0 }, // flex=0 means we are our inherent size
+            .{ .widget = def.widget(), .flex = 1 },
+            .{ .widget = ghi.widget(), .flex = 1 },
+            .{ .widget = jklmno.widget(), .flex = 1 },
+        },
+    };
+
+    // Boiler plate draw context
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const ucd = try vaxis.Unicode.init(arena.allocator());
+    vtk.DrawContext.init(&ucd, .unicode);
+
+    const flex_widget = flex_column.widget();
+    const ctx: vtk.DrawContext = .{
+        .arena = arena.allocator(),
+        .min = .{},
+        .max = .{ .width = 16, .height = 16 },
+    };
+
+    const surface = try flex_widget.draw(ctx);
+    // FlexColumn expands to max height and widest child
+    try std.testing.expectEqual(16, surface.size.height);
+    try std.testing.expectEqual(3, surface.size.width);
+    // We have four children
+    try std.testing.expectEqual(4, surface.children.len);
+
+    // We will track the row we are on to confirm the origins
+    var row: u16 = 0;
+    // First child has flex=0, it should be it's inherent height
+    try std.testing.expectEqual(1, surface.children[0].surface.size.height);
+    try std.testing.expectEqual(row, surface.children[0].origin.row);
+    // Add the child height each time
+    row += surface.children[0].surface.size.height;
+    // Let's do some math
+    // - We have 4 children to fit into 16 rows. 3 children will be 1 row tall, one will be 2 rows
+    //   tall for a total height of 5 rows.
+    // - The first child is 1 row and no flex. The rest of the height gets distributed evenly among
+    //   the remaining 3 children. The remainder height is 16 - 5 = 11, so each child should get 11 /
+    //   3 = 3 extra rows, and the last will receive the remainder
+    try std.testing.expectEqual(1 + 3, surface.children[1].surface.size.height);
+    try std.testing.expectEqual(row, surface.children[1].origin.row);
+    row += surface.children[1].surface.size.height;
+
+    try std.testing.expectEqual(1 + 3, surface.children[2].surface.size.height);
+    try std.testing.expectEqual(row, surface.children[2].origin.row);
+    row += surface.children[2].surface.size.height;
+
+    try std.testing.expectEqual(2 + 3 + 2, surface.children[3].surface.size.height);
+    try std.testing.expectEqual(row, surface.children[3].origin.row);
 }
 
 test "refAllDecls" {
