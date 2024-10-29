@@ -510,7 +510,7 @@ test ListView {
     const def: Text = .{ .text = "def" };
     const ghi: Text = .{ .text = "ghi" };
     const jklmno: Text = .{ .text = "jkl\n mno" };
-    // 0 | abc
+    // 0 |*abc
     // 1 |   def
     // 2 |   ghi
     // 3 | def
@@ -572,7 +572,7 @@ test ListView {
     try list_widget.handleEvent(&ctx, .{ .mouse = mouse_event });
     // We have to draw the widget for scrolls to take effect
     surface = try list_widget.draw(draw_ctx);
-    // 0   abc
+    // 0  *abc
     // 1 |   def
     // 2 |   ghi
     // 3 | def
@@ -589,7 +589,7 @@ test ListView {
     try list_widget.handleEvent(&ctx, .{ .mouse = mouse_event });
     try list_widget.handleEvent(&ctx, .{ .mouse = mouse_event });
     surface = try list_widget.draw(draw_ctx);
-    // 0   abc
+    // 0  *abc
     // 1     def
     // 2     ghi
     // 3 | def
@@ -619,6 +619,13 @@ test ListView {
     // Cursor down
     try list_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = 'j' } });
     surface = try list_widget.draw(draw_ctx);
+    // 0 | abc
+    // 1 |   def
+    // 2 |   ghi
+    // 3 |*def
+    // 4   ghi
+    // 5   jkl
+    // 6     mno
     // Scroll doesn't change
     try std.testing.expectEqual(0, list_view.scroll.top);
     try std.testing.expectEqual(0, list_view.scroll.offset);
@@ -628,6 +635,13 @@ test ListView {
     // Cursor down
     try list_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = 'j' } });
     surface = try list_widget.draw(draw_ctx);
+    // 0   abc
+    // 1 |   def
+    // 2 |   ghi
+    // 3 | def
+    // 4 |*ghi
+    // 5   jkl
+    // 6     mno
     // Scroll advances one row
     try std.testing.expectEqual(0, list_view.scroll.top);
     try std.testing.expectEqual(1, list_view.scroll.offset);
@@ -637,9 +651,17 @@ test ListView {
     // Cursor down
     try list_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = 'j' } });
     surface = try list_widget.draw(draw_ctx);
-    // Scroll advances one row
-    try std.testing.expectEqual(0, list_view.scroll.top);
-    try std.testing.expectEqual(1, list_view.scroll.offset);
+    // 0   abc
+    // 1     def
+    // 2     ghi
+    // 3 | def
+    // 4 | ghi
+    // 5 |*jkl
+    // 6 |   mno
+    // We are cursored onto the last item. The entire last item comes into view, effectively
+    // advancing the scroll by 2
+    try std.testing.expectEqual(1, list_view.scroll.top);
+    try std.testing.expectEqual(0, list_view.scroll.offset);
     try std.testing.expectEqual(3, surface.children.len);
     try std.testing.expectEqual(3, list_view.cursor);
 }
