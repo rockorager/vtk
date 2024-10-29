@@ -112,17 +112,15 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
             next_frame_ms += tick_ms;
         }
 
-        ctx.consume_event = false;
-
         try self.checkTimers(&ctx);
 
         while (loop.tryEvent()) |event| {
+            ctx.consume_event = false;
             switch (event) {
                 .key_press => |key| {
                     try focus_handler.handleEvent(&ctx, event);
-                    if (ctx.consume_event) {
-                        try self.handleCommand(&ctx.cmds);
-                    } else {
+                    try self.handleCommand(&ctx.cmds);
+                    if (!ctx.consume_event) {
                         if (key.matches(self.quit_key.codepoint, self.quit_key.mods)) {
                             ctx.quit = true;
                         }
@@ -156,7 +154,8 @@ pub fn run(self: *App, widget: vtk.Widget, opts: Options) anyerror!void {
         // Check if we need a redraw
         if (!ctx.redraw) continue;
         ctx.redraw = false;
-        ctx.cmds.clearRetainingCapacity();
+        // Assert that we have handled all commands
+        assert(ctx.cmds.items.len == 0);
 
         _ = arena.reset(.retain_capacity);
 
