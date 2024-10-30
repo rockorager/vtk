@@ -470,3 +470,52 @@ test "SubSurface: containsPoint" {
     try testing.expect(!surf.containsPoint(.{ .row = 2, .col = 12 }));
     try testing.expect(!surf.containsPoint(.{ .row = 12, .col = 2 }));
 }
+
+test "All widgets have a doctest and refAllDecls test" {
+    // This test goes through every file in src/ and checks that it has a doctest (the filename
+    // stripped of ".zig" matches a test name) and a test called "refAllDecls". It makes no
+    // guarantees about the quality of the test, but it does ensure it exists which at least makes
+    // it easy to fail CI early, or spot bad tests vs non-existant tests
+    const excludes = &[_][]const u8{ "main.zig", "App.zig" };
+
+    var cwd = try std.fs.cwd().openDir("./src", .{ .iterate = true });
+    var iter = cwd.iterate();
+    defer cwd.close();
+    outer: while (try iter.next()) |file| {
+        if (file.kind != .file) continue;
+        for (excludes) |ex| if (std.mem.eql(u8, ex, file.name)) continue :outer;
+
+        const container_name = if (std.mem.lastIndexOf(u8, file.name, ".zig")) |idx|
+            file.name[0..idx]
+        else
+            continue;
+        const data = try cwd.readFileAllocOptions(std.testing.allocator, file.name, 10_000_000, null, @alignOf(u8), 0x00);
+        defer std.testing.allocator.free(data);
+        var ast = try std.zig.Ast.parse(std.testing.allocator, data, .zig);
+        defer ast.deinit(std.testing.allocator);
+
+        var has_doctest: bool = false;
+        var has_refAllDecls: bool = false;
+        for (ast.rootDecls()) |root_decl| {
+            const decl = ast.nodes.get(root_decl);
+            switch (decl.tag) {
+                .test_decl => {
+                    const test_name = ast.tokenSlice(decl.data.lhs);
+                    if (std.mem.eql(u8, "\"refAllDecls\"", test_name))
+                        has_refAllDecls = true
+                    else if (std.mem.eql(u8, container_name, test_name))
+                        has_doctest = true;
+                },
+                else => continue,
+            }
+        }
+        if (!has_doctest) {
+            std.log.err("file {s} has no doctest", .{file.name});
+            return error.TestExpectedDoctest;
+        }
+        if (!has_refAllDecls) {
+            std.log.err("file {s} has no 'refAllDecls' test", .{file.name});
+            return error.TestExpectedRefAllDecls;
+        }
+    }
+}
