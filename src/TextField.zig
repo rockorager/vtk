@@ -507,7 +507,7 @@ pub const Buffer = struct {
     }
 };
 
-test "TextInput.zig: Buffer" {
+test "TextField.zig: Buffer" {
     var gap_buf = Buffer.init(std.testing.allocator);
     defer gap_buf.deinit();
 
@@ -534,9 +534,65 @@ test "TextInput.zig: Buffer" {
     try std.testing.expectEqual(2, gap_buf.cursor);
 }
 
-test "TextField satisfies widget interface" {
-    var text: TextField = undefined;
-    _ = text.widget();
+test TextField {
+    // Boiler plate draw context init
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const ucd = try vaxis.Unicode.init(arena.allocator());
+    vtk.DrawContext.init(&ucd, .unicode);
+
+    // Create some object which reacts to text field changes
+    const Foo = struct {
+        allocator: std.mem.Allocator,
+        text: []const u8,
+
+        fn onChange(ptr: ?*anyopaque, ctx: *vtk.EventContext, str: []const u8) anyerror!void {
+            const foo: *@This() = @ptrCast(@alignCast(ptr));
+            foo.text = try foo.allocator.dupe(u8, str);
+            ctx.consumeAndRedraw();
+        }
+    };
+    var foo: Foo = .{ .text = "", .allocator = arena.allocator() };
+
+    // Text field expands to the width, so it can't be null. It is always 1 line tall
+    const draw_ctx: vtk.DrawContext = .{
+        .arena = arena.allocator(),
+        .min = .{},
+        .max = .{ .width = 8, .height = 1 },
+    };
+    _ = draw_ctx;
+
+    var ctx: vtk.EventContext = .{
+        .cmds = vtk.CommandList.init(arena.allocator()),
+    };
+
+    // Enough boiler plate...Create the text field
+    var text_field = TextField.init(std.testing.allocator, &ucd);
+    defer text_field.deinit();
+    text_field.onChange = Foo.onChange;
+    text_field.onSubmit = Foo.onChange;
+    text_field.userdata = &foo;
+
+    const tf_widget = text_field.widget();
+    // Send some key events to the widget
+    try tf_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = 'H', .text = "H" } });
+    // The foo object stores the last text that we saw from an onChange call
+    try std.testing.expectEqualStrings("H", foo.text);
+    try tf_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = 'e', .text = "e" } });
+    try std.testing.expectEqualStrings("He", foo.text);
+    try tf_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = 'l', .text = "l" } });
+    try std.testing.expectEqualStrings("Hel", foo.text);
+    try tf_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = 'l', .text = "l" } });
+    try std.testing.expectEqualStrings("Hell", foo.text);
+    try tf_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = 'o', .text = "o" } });
+    try std.testing.expectEqualStrings("Hello", foo.text);
+
+    // An arrow moves the cursor. The text doesn't change
+    try tf_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = vaxis.Key.left } });
+    try std.testing.expectEqualStrings("Hello", foo.text);
+
+    try tf_widget.handleEvent(&ctx, .{ .key_press = .{ .codepoint = '_', .text = "_" } });
+    try std.testing.expectEqualStrings("Hell_o", foo.text);
 }
 
 test "refAllDecls" {
