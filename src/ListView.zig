@@ -263,7 +263,20 @@ fn insertChildren(
         });
 
         // Break if we went past the top edge, or are the top item
-        if (upheight < 0 or self.scroll.top == 0) break;
+        if (upheight <= 0 or self.scroll.top == 0) break;
+    }
+
+    // Our new offset is the "upheight"
+    self.scroll.offset = upheight;
+
+    // Reset origins if we overshot and put the top item too low
+    if (self.scroll.top == 0 and upheight > 0) {
+        self.scroll.offset = 0;
+        var row: i32 = 0;
+        for (child_list.items) |*child| {
+            child.origin.row = row;
+            row += child.surface.size.height;
+        }
     }
     // Our new offset is the "upheight"
     self.scroll.offset = upheight;
@@ -339,6 +352,8 @@ fn drawBuilder(self: *ListView, ctx: vtk.DrawContext, builder: Builder) Allocato
     // If we are offset downward, insert widgets to the front of the list before traversing downard
     if (accumulated_height > 0) {
         try self.insertChildren(ctx, builder, &child_list, accumulated_height);
+        const last_child = child_list.items[child_list.items.len - 1];
+        accumulated_height = last_child.origin.row + last_child.surface.size.height;
     }
 
     const child_offset: u16 = if (self.draw_cursor) 2 else 0;
@@ -518,7 +533,7 @@ test ListView {
     // 5   jkl
     // 6     mno
 
-    // Create the flex column
+    // Create the list view
     const list_view: ListView = .{
         .wheel_scroll = 1, // Set wheel scroll to one
         .children = .{ .slice = &.{
