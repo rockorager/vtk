@@ -330,9 +330,43 @@ pub const SoftwrapIterator = struct {
     }
 };
 
-test "RichText satisfies widget interface" {
-    const text: RichText = .{ .text = &.{.{ .text = "Hello, World" }} };
-    _ = text.widget();
+test RichText {
+    var rich_text: RichText = .{
+        .text = &.{
+            .{ .text = "Hello, " },
+            .{ .text = "World", .style = .{ .bold = true } },
+        },
+    };
+
+    const rich_widget = rich_text.widget();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const ucd = try vaxis.Unicode.init(arena.allocator());
+    vtk.DrawContext.init(&ucd, .unicode);
+
+    // Center expands to the max size. It must therefore have non-null max width and max height.
+    // These values are asserted in draw
+    const ctx: vtk.DrawContext = .{
+        .arena = arena.allocator(),
+        .min = .{},
+        .max = .{ .width = 7, .height = 2 },
+    };
+
+    {
+        // RichText softwraps by default
+        const surface = try rich_widget.draw(ctx);
+        try std.testing.expectEqual(@as(vtk.Size, .{ .width = 6, .height = 2 }), surface.size);
+    }
+
+    {
+        rich_text.softwrap = false;
+        rich_text.overflow = .ellipsis;
+        const surface = try rich_widget.draw(ctx);
+        try std.testing.expectEqual(@as(vtk.Size, .{ .width = 7, .height = 1 }), surface.size);
+        // The last character will be an ellipsis
+        try std.testing.expectEqualStrings("…", surface.buffer[surface.buffer.len - 1].char.grapheme);
+    }
 }
 
 test "refAllDecls" {
